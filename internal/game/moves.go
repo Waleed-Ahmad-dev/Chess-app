@@ -43,18 +43,18 @@ func (g *Game) isMoveLegal(m Move) bool {
 	// Handle Castling Rook Move
 	if m.MoveType == MoveCastling {
 		switch m.To {
-		case 62: // White Short
-			tempBoard[61] = tempBoard[63]
-			tempBoard[63] = Piece{Type: Empty}
-		case 58: // White Long
-			tempBoard[59] = tempBoard[56]
-			tempBoard[56] = Piece{Type: Empty}
-		case 6: // Black Short
-			tempBoard[5] = tempBoard[7]
+		case 6: // White Short (g1)
+			tempBoard[5] = tempBoard[7] // Rook: h1 -> f1
 			tempBoard[7] = Piece{Type: Empty}
-		case 2: // Black Long
-			tempBoard[3] = tempBoard[0]
+		case 2: // White Long (c1)
+			tempBoard[3] = tempBoard[0] // Rook: a1 -> d1
 			tempBoard[0] = Piece{Type: Empty}
+		case 62: // Black Short (g8)
+			tempBoard[61] = tempBoard[63] // Rook: h8 -> f8
+			tempBoard[63] = Piece{Type: Empty}
+		case 58: // Black Long (c8)
+			tempBoard[59] = tempBoard[56] // Rook: a8 -> d8
+			tempBoard[56] = Piece{Type: Empty}
 		}
 	}
 
@@ -123,45 +123,45 @@ func (g *Game) getKingMoves(sq int) []Move {
 
 	if g.Turn == White {
 		// White Short Castling (e1 -> g1)
-		if g.Castling.WhiteKingSide && sq == 60 { // King must be on e1
-			if b[61].Type == Empty && b[62].Type == Empty && // f1 and g1 empty
-				b[63].Type == Rook && b[63].Color == White { // Rook on h1
+		if g.Castling.WhiteKingSide && sq == 4 { // King must be on e1
+			if b[5].Type == Empty && b[6].Type == Empty && // f1 and g1 empty
+				b[7].Type == Rook && b[7].Color == White { // Rook on h1
 				// Check that f1 and g1 are not attacked
-				if !b.IsSquareAttacked(61, Black) && !b.IsSquareAttacked(62, Black) {
-					moves = append(moves, Move{From: sq, To: 62, Piece: King, MoveType: MoveCastling})
-				}
-			}
-		}
-
-		// White Long Castling (e1 -> c1)
-		if g.Castling.WhiteQueenSide && sq == 60 { // King must be on e1
-			if b[59].Type == Empty && b[58].Type == Empty && b[57].Type == Empty && // d1, c1, b1 empty
-				b[56].Type == Rook && b[56].Color == White { // Rook on a1
-				// Check that d1 and c1 are not attacked (b1 doesn't matter)
-				if !b.IsSquareAttacked(59, Black) && !b.IsSquareAttacked(58, Black) {
-					moves = append(moves, Move{From: sq, To: 58, Piece: King, MoveType: MoveCastling})
-				}
-			}
-		}
-	} else {
-		// Black Short Castling (e8 -> g8)
-		if g.Castling.BlackKingSide && sq == 4 { // King must be on e8
-			if b[5].Type == Empty && b[6].Type == Empty && // f8 and g8 empty
-				b[7].Type == Rook && b[7].Color == Black { // Rook on h8
-				// Check that f8 and g8 are not attacked
-				if !b.IsSquareAttacked(5, White) && !b.IsSquareAttacked(6, White) {
+				if !b.IsSquareAttacked(5, Black) && !b.IsSquareAttacked(6, Black) {
 					moves = append(moves, Move{From: sq, To: 6, Piece: King, MoveType: MoveCastling})
 				}
 			}
 		}
 
-		// Black Long Castling (e8 -> c8)
-		if g.Castling.BlackQueenSide && sq == 4 { // King must be on e8
-			if b[3].Type == Empty && b[2].Type == Empty && b[1].Type == Empty && // d8, c8, b8 empty
-				b[0].Type == Rook && b[0].Color == Black { // Rook on a8
-				// Check that d8 and c8 are not attacked (b8 doesn't matter)
-				if !b.IsSquareAttacked(3, White) && !b.IsSquareAttacked(2, White) {
+		// White Long Castling (e1 -> c1)
+		if g.Castling.WhiteQueenSide && sq == 4 { // King must be on e1
+			if b[3].Type == Empty && b[2].Type == Empty && b[1].Type == Empty && // d1, c1, b1 empty
+				b[0].Type == Rook && b[0].Color == White { // Rook on a1
+				// Check that d1 and c1 are not attacked (b1 doesn't matter)
+				if !b.IsSquareAttacked(3, Black) && !b.IsSquareAttacked(2, Black) {
 					moves = append(moves, Move{From: sq, To: 2, Piece: King, MoveType: MoveCastling})
+				}
+			}
+		}
+	} else {
+		// Black Short Castling (e8 -> g8)
+		if g.Castling.BlackKingSide && sq == 60 { // King must be on e8
+			if b[61].Type == Empty && b[62].Type == Empty && // f8 and g8 empty
+				b[63].Type == Rook && b[63].Color == Black { // Rook on h8
+				// Check that f8 and g8 are not attacked
+				if !b.IsSquareAttacked(61, White) && !b.IsSquareAttacked(62, White) {
+					moves = append(moves, Move{From: sq, To: 62, Piece: King, MoveType: MoveCastling})
+				}
+			}
+		}
+
+		// Black Long Castling (e8 -> c8)
+		if g.Castling.BlackQueenSide && sq == 60 { // King must be on e8
+			if b[59].Type == Empty && b[58].Type == Empty && b[57].Type == Empty && // d8, c8, b8 empty
+				b[56].Type == Rook && b[56].Color == Black { // Rook on a8
+				// Check that d8 and c8 are not attacked (b8 doesn't matter)
+				if !b.IsSquareAttacked(59, White) && !b.IsSquareAttacked(58, White) {
+					moves = append(moves, Move{From: sq, To: 58, Piece: King, MoveType: MoveCastling})
 				}
 			}
 		}

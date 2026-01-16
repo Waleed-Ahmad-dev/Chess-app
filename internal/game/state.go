@@ -33,22 +33,22 @@ func (g *Game) MakeMove(m Move) {
 	// Handle Castling (move the rook)
 	if m.MoveType == MoveCastling {
 		switch m.To {
-		case 62: // White Short: h1->f1
-			rook := g.Board[63]
-			g.Board[63] = Piece{Type: Empty}
-			g.Board[61] = rook
-		case 58: // White Long: a1->d1
-			rook := g.Board[56]
-			g.Board[56] = Piece{Type: Empty}
-			g.Board[59] = rook
-		case 6: // Black Short: h8->f8
+		case 6: // White Short: h1->f1
 			rook := g.Board[7]
 			g.Board[7] = Piece{Type: Empty}
 			g.Board[5] = rook
-		case 2: // Black Long: a8->d8
+		case 2: // White Long: a1->d1
 			rook := g.Board[0]
 			g.Board[0] = Piece{Type: Empty}
 			g.Board[3] = rook
+		case 62: // Black Short: h8->f8
+			rook := g.Board[63]
+			g.Board[63] = Piece{Type: Empty}
+			g.Board[61] = rook
+		case 58: // Black Long: a8->d8
+			rook := g.Board[56]
+			g.Board[56] = Piece{Type: Empty}
+			g.Board[59] = rook
 		}
 	}
 
@@ -80,16 +80,16 @@ func (g *Game) MakeMove(m Move) {
 	// If Rook moves, lose specific right
 	// We check specific starting squares for rooks
 	if movingPiece.Type == Rook {
-		if m.From == 63 {
+		if m.From == 7 {
 			g.Castling.WhiteKingSide = false
 		} // h1
-		if m.From == 56 {
+		if m.From == 0 {
 			g.Castling.WhiteQueenSide = false
 		} // a1
-		if m.From == 7 {
+		if m.From == 63 {
 			g.Castling.BlackKingSide = false
 		} // h8
-		if m.From == 0 {
+		if m.From == 56 {
 			g.Castling.BlackQueenSide = false
 		} // a8
 	}
@@ -97,13 +97,13 @@ func (g *Game) MakeMove(m Move) {
 	// If a rook is captured, remove castling rights for that side
 	if capturedPiece.Type == Rook {
 		switch m.To {
-		case 63: // h1
+		case 7: // h1
 			g.Castling.WhiteKingSide = false
-		case 56: // a1
+		case 0: // a1
 			g.Castling.WhiteQueenSide = false
-		case 7: // h8
+		case 63: // h8
 			g.Castling.BlackKingSide = false
-		case 0: // a8
+		case 56: // a8
 			g.Castling.BlackQueenSide = false
 		}
 	}
