@@ -116,3 +116,19 @@ func (p Piece) String() string {
 	}
 	return "?"
 }
+
+type Game struct {
+	Board   Board
+	Turn    Color
+	History []Move
+}
+
+// NewGame returns a game with the starting position
+func NewGame() *Game {
+	g := &Game{
+		Turn:    White,
+		History: make([]Move, 0),
+	}
+	g.Board.LoadFEN(StartFEN)
+	return g
+}
