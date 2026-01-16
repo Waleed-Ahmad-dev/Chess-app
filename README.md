@@ -84,19 +84,7 @@ go run cmd/chess/main.go web
 
 - Open your browser and navigate to: `http://localhost:8080`
 
-### WebAssembly (Browser) Mode
-
-Run the chess engine entirely in the browser using WebAssembly.
-
-> **Note**: If you see a `could not import syscall/js` error in your IDE, this is normal. That package is only available when compiling with `GOOS=js GOARCH=wasm`. The build commands below handle this for you.
-
-**Build and Run**:
-
-```bash
-make serve-wasm
-```
-
-Then visit `http://localhost:8080` to play.
+---
 
 ## API Documentation
 
