@@ -1,6 +1,6 @@
 package game
 
-import "fmt"
+// import "fmt"
 
 // Color represents the side (White or Black)
 type Color int
@@ -59,17 +59,41 @@ func (p Piece) String() string {
 	// We will make a better renderer later
 	switch p.Type {
 	case Pawn:
-		if p.Color == White { return "P" } else { return "p" }
+		if p.Color == White {
+			return "P"
+		} else {
+			return "p"
+		}
 	case Knight:
-		if p.Color == White { return "N" } else { return "n" }
+		if p.Color == White {
+			return "N"
+		} else {
+			return "n"
+		}
 	case Bishop:
-		if p.Color == White { return "B" } else { return "b" }
+		if p.Color == White {
+			return "B"
+		} else {
+			return "b"
+		}
 	case Rook:
-		if p.Color == White { return "R" } else { return "r" }
+		if p.Color == White {
+			return "R"
+		} else {
+			return "r"
+		}
 	case Queen:
-		if p.Color == White { return "Q" } else { return "q" }
+		if p.Color == White {
+			return "Q"
+		} else {
+			return "q"
+		}
 	case King:
-		if p.Color == White { return "K" } else { return "k" }
+		if p.Color == White {
+			return "K"
+		} else {
+			return "k"
+		}
 	}
 	return "?"
 }
