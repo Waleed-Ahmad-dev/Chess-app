@@ -1,5 +1,33 @@
 package game
 
+func (g *Game) GenerateLegalMoves() []Move {
+	// 1. Generate all physical moves
+	pseudoMoves := g.Board.GeneratePseudoLegalMoves(g.Turn)
+	legalMoves := []Move{}
+
+	// 2. Filter them
+	for _, m := range pseudoMoves {
+		// Create a temporary board copy
+		tempBoard := g.Board
+
+		// Execute move on temp board
+		// (We manually do what MakeMove does, but without history side effects)
+		tempBoard[m.To] = tempBoard[m.From]
+		tempBoard[m.From] = Piece{Type: Empty}
+		if m.Promotion != Empty {
+			tempBoard[m.To] = Piece{Type: m.Promotion, Color: g.Turn}
+		}
+
+		// 3. Verify King Safety
+		// If I make this move, is my King in check?
+		if !tempBoard.InCheck(g.Turn) {
+			legalMoves = append(legalMoves, m)
+		}
+	}
+
+	return legalMoves
+}
+
 // GeneratePseudoLegalMoves returns all possible moves for the active color
 func (b *Board) GeneratePseudoLegalMoves(turn Color) []Move {
 	moves := []Move{}
