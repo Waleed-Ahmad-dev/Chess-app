@@ -9,9 +9,19 @@ import (
 	"strings"
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
+	"github.com/Waleed-Ahmad-dev/Chess-app/internal/server"
 )
 
 func main() {
+	// Check if user wants web mode
+	if len(os.Args) > 1 && os.Args[1] == "web" {
+		fmt.Println("Starting Chess Web Server...")
+		fmt.Println("Open your browser and go to: http://localhost:8080")
+		server.StartServer()
+		return
+	}
+
+	// Original CLI mode
 	gameInstance := game.NewGame()
 	reader := bufio.NewReader(os.Stdin)
 
