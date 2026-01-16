@@ -18,7 +18,7 @@ func main() {
 	// 7  . . . . . . . .
 	// ...
 	// 1  . . B . K . . .
-	gameInstance.Board.LoadFEN("4r3/8/8/8/8/8/8/2B1K3 w - - 0 1")
+	gameInstance.LoadFEN("4r3/8/8/8/8/8/8/2B1K3 w - - 0 1")
 	gameInstance.Board.Draw()
 
 	fmt.Printf("Is White in Check? %v\n", gameInstance.Board.InCheck(game.White))
@@ -27,9 +27,13 @@ func main() {
 	moves := gameInstance.GenerateLegalMoves()
 
 	for _, m := range moves {
-		fmt.Printf("%s moves %s -> %s\n",
-			m.Piece,
-			game.IndexToCoord(m.From),
-			game.IndexToCoord(m.To))
+		fmt.Printf("%s moves %s -> %s", m.Piece, game.IndexToCoord(m.From), game.IndexToCoord(m.To))
+		if m.MoveType == game.MoveCastling {
+			fmt.Print(" (Castling)")
+		}
+		if m.MoveType == game.MoveEnPassant {
+			fmt.Print(" (En Passant)")
+		}
+		fmt.Println()
 	}
 }
