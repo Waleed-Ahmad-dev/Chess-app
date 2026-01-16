@@ -1,39 +1,83 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
 )
 
 func main() {
 	gameInstance := game.NewGame()
+	reader := bufio.NewReader(os.Stdin)
 
-	// Setup a tricky position:
-	// White King on e1. Black Rook on e8 (Check!).
-	// White has a Bishop on c1 that CAN interpose on e3.
-	// White King CAN move to f1.
-	fmt.Println("Loading check test position...")
-	// 8  r . . . r . . .
-	// 7  . . . . . . . .
-	// ...
-	// 1  . . B . K . . .
-	gameInstance.LoadFEN("4r3/8/8/8/8/8/8/2B1K3 w - - 0 1")
-	gameInstance.Board.Draw()
+	// --- The Game Loop ---
+	for {
+		clearScreen()
+		gameInstance.Board.Draw()
 
-	fmt.Printf("Is White in Check? %v\n", gameInstance.Board.InCheck(game.White))
+		// 1. Generate Legal Moves for the current turn
+		legalMoves := gameInstance.GenerateLegalMoves()
 
-	fmt.Println("Generating LEGAL Moves for White...")
-	moves := gameInstance.GenerateLegalMoves()
-
-	for _, m := range moves {
-		fmt.Printf("%s moves %s -> %s", m.Piece, game.IndexToCoord(m.From), game.IndexToCoord(m.To))
-		if m.MoveType == game.MoveCastling {
-			fmt.Print(" (Castling)")
+		// 2. Check Game Over Conditions
+		if len(legalMoves) == 0 {
+			if gameInstance.Board.InCheck(gameInstance.Turn) {
+				fmt.Printf("\nCheckmate! %s wins!\n", getOpponentColor(gameInstance.Turn))
+			} else {
+				fmt.Println("\nStalemate! The game is a draw.")
+			}
+			break
 		}
-		if m.MoveType == game.MoveEnPassant {
-			fmt.Print(" (En Passant)")
+
+		// 3. Print Status
+		if gameInstance.Board.InCheck(gameInstance.Turn) {
+			fmt.Println("\n⚠️  CHECK! ⚠️")
 		}
-		fmt.Println()
+		fmt.Printf("\n%s's turn to move.\n", gameInstance.Turn)
+		fmt.Print("Enter move (e.g., 'e2e4'): ")
+
+		// 4. Read Input
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "exit" || input == "quit" {
+			fmt.Println("Goodbye!")
+			break
+		}
+
+		// 5. Parse & Validate Move
+		move, err := game.ParseMove(input, legalMoves)
+		if err != nil {
+			fmt.Printf("Error: %v\nPress Enter to try again...", err)
+			reader.ReadString('\n') // Wait for user to read error
+			continue
+		}
+
+		// 6. Execute Move
+		gameInstance.MakeMove(move)
 	}
+}
+
+// Helper to clear the terminal screen
+func clearScreen() {
+	// Standard ANSI escape code to clear screen (Works on Arch Linux/Mac/Most Unix)
+	fmt.Print("\033[H\033[2J")
+
+	// Fallback for Windows if needed (though ANSI often works there too now)
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+}
+
+func getOpponentColor(c game.Color) string {
+	if c == game.White {
+		return "Black"
+	}
+	return "White"
 }
