@@ -6,13 +6,15 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
 )
 
 var (
-	sessions = make(map[string]*game.Game)
-	mu       sync.RWMutex
+	sessions     = make(map[string]*game.Game)
+	sessionTimes = make(map[string]time.Time)
+	mu           sync.RWMutex
 )
 
 type GameStateResponse struct {
@@ -39,10 +41,14 @@ type MoveResponse struct {
 }
 
 func StartServer() {
+	// Start cleanup goroutine
+	go cleanupSessions()
+
 	http.HandleFunc("/", serveHome)
 	http.HandleFunc("/api/new-game", handleNewGame)
 	http.HandleFunc("/api/game-state", handleGameState)
 	http.HandleFunc("/api/make-move", handleMakeMove)
+	http.HandleFunc("/api/undo-move", handleUndoMove)
 
 	log.Println("Server starting on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -64,6 +70,7 @@ func handleNewGame(w http.ResponseWriter, r *http.Request) {
 
 	mu.Lock()
 	sessions[sessionID] = g
+	sessionTimes[sessionID] = time.Now()
 	mu.Unlock()
 
 	response := map[string]interface{}{
@@ -133,6 +140,50 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	g.MakeMove(move)
+
+	mu.Lock()
+	sessionTimes[req.SessionID] = time.Now()
+	mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(MoveResponse{
+		Success: true,
+		State:   getGameState(g),
+	})
+}
+
+func handleUndoMove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	mu.RLock()
+	g, exists := sessions[req.SessionID]
+	mu.RUnlock()
+
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(MoveResponse{
+			Success: false,
+			Error:   "Session not found",
+		})
+		return
+	}
+
+	g.UndoMove()
+
+	mu.Lock()
+	sessionTimes[req.SessionID] = time.Now()
+	mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
@@ -230,5 +281,20 @@ func getCapturedPieces(g *game.Game) []string {
 }
 
 func generateSessionID() string {
-	return fmt.Sprintf("session_%d", len(sessions)+1)
+	return fmt.Sprintf("session_%d_%d", len(sessions)+1, time.Now().UnixNano())
+}
+
+func cleanupSessions() {
+	for {
+		time.Sleep(1 * time.Hour)
+		mu.Lock()
+		now := time.Now()
+		for id, lastActive := range sessionTimes {
+			if now.Sub(lastActive) > 24*time.Hour {
+				delete(sessions, id)
+				delete(sessionTimes, id)
+			}
+		}
+		mu.Unlock()
+	}
 }
