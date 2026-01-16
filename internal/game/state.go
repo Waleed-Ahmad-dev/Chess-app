@@ -2,6 +2,9 @@ package game
 
 // MakeMove executes a move on the board and updates game state
 func (g *Game) MakeMove(m Move) {
+	// Store the captured piece for rook capture check
+	capturedPiece := g.Board[m.To]
+
 	// 1. Identify the moving piece
 	movingPiece := g.Board[m.From]
 
@@ -91,10 +94,19 @@ func (g *Game) MakeMove(m Move) {
 		} // a8
 	}
 
-	// NOTE: Technically we also lose rights if a rook is CAPTURED.
-	// This would require checking the 'targetPiece' before we overwrote it.
-	// For Phase 5 basic requirements, we'll stick to moving logic,
-	// but strictly speaking, capturing an enemy rook on h8 removes BlackKingSide rights.
+	// If a rook is captured, remove castling rights for that side
+	if capturedPiece.Type == Rook {
+		switch m.To {
+		case 63: // h1
+			g.Castling.WhiteKingSide = false
+		case 56: // a1
+			g.Castling.WhiteQueenSide = false
+		case 7: // h8
+			g.Castling.BlackKingSide = false
+		case 0: // a8
+			g.Castling.BlackQueenSide = false
+		}
+	}
 
 	// 4. Record the move in history
 	g.History = append(g.History, m)
@@ -127,6 +139,9 @@ func (g *Game) UndoMove() {
 	}
 	g.Board[lastMove.From] = movedPiece
 	g.Board[lastMove.To] = Piece{Type: Empty}
+
+	// TODO: Restore captured piece and castling rights
+	// This requires storing more information in the Move struct
 
 	if g.Turn == White {
 		g.Turn = Black
