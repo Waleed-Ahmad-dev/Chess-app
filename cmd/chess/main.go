@@ -7,13 +7,20 @@ import (
 )
 
 func main() {
-	// 1. Create a new board
 	var board game.Board
-
-	// 2. Load the starting position
 	fmt.Println("Loading starting position...")
 	board.LoadFEN(game.StartFEN)
-
-	// 3. Draw the board
 	board.Draw()
+
+	// Test Move Generation
+	fmt.Println("Generating Moves for White...")
+	moves := board.GeneratePseudoLegalMoves(game.White)
+
+	for _, m := range moves {
+		// Use our new Helper function to print readable moves
+		fmt.Printf("%s moves %s -> %s\n",
+			m.Piece,
+			game.IndexToCoord(m.From),
+			game.IndexToCoord(m.To))
+	}
 }
