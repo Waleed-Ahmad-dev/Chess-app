@@ -7,17 +7,26 @@ import (
 )
 
 func main() {
-	var board game.Board
-	fmt.Println("Loading starting position...")
-	board.LoadFEN(game.StartFEN)
-	board.Draw()
+	gameInstance := game.NewGame()
 
-	// Test Move Generation
-	fmt.Println("Generating Moves for White...")
-	moves := board.GeneratePseudoLegalMoves(game.White)
+	// Setup a tricky position:
+	// White King on e1. Black Rook on e8 (Check!).
+	// White has a Bishop on c1 that CAN interpose on e3.
+	// White King CAN move to f1.
+	fmt.Println("Loading check test position...")
+	// 8  r . . . r . . .
+	// 7  . . . . . . . .
+	// ...
+	// 1  . . B . K . . .
+	gameInstance.Board.LoadFEN("4r3/8/8/8/8/8/8/2B1K3 w - - 0 1")
+	gameInstance.Board.Draw()
+
+	fmt.Printf("Is White in Check? %v\n", gameInstance.Board.InCheck(game.White))
+
+	fmt.Println("Generating LEGAL Moves for White...")
+	moves := gameInstance.GenerateLegalMoves()
 
 	for _, m := range moves {
-		// Use our new Helper function to print readable moves
 		fmt.Printf("%s moves %s -> %s\n",
 			m.Piece,
 			game.IndexToCoord(m.From),
