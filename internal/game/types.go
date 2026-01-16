@@ -31,6 +31,25 @@ const (
 	King
 )
 
+func (p PieceType) String() string {
+	switch p {
+	case Pawn:
+		return "Pawn"
+	case Knight:
+		return "Knight"
+	case Bishop:
+		return "Bishop"
+	case Rook:
+		return "Rook"
+	case Queen:
+		return "Queen"
+	case King:
+		return "King"
+	default:
+		return "Empty"
+	}
+}
+
 // Piece represents a piece on the board
 type Piece struct {
 	Type  PieceType
