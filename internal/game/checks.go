@@ -1,5 +1,3 @@
-File: ./internal/game/checks.go
-----------------
 package game
 
 // InCheck returns true if the King of the given color is under attack
@@ -39,14 +37,14 @@ func (b *Board) IsSquareAttacked(sq int, attackerColor Color) bool {
 	if attackerColor == White {
 		pawnDir = -1 // White pawns come from below, so we look down
 	} else {
-		pawnDir = 1  // Black pawns come from above, so we look up
+		pawnDir = 1 // Black pawns come from above, so we look up
 	}
-	
+
 	pawnAttacks := []int{sq + 8 + 1, sq + 8 - 1} // Check diagonals (simplified rank math below)
 	// Actually, let's use explicit math:
 	rank := sq / 8
 	file := sq % 8
-	
+
 	// Look for attacker pawns
 	checkRank := rank - pawnDir // The rank an attacking pawn would be on
 	if checkRank >= 0 && checkRank < 8 {
@@ -90,7 +88,7 @@ func (b *Board) IsSquareAttacked(sq int, attackerColor Color) bool {
 	}
 
 	// 4. Check for Sliding attacks (Bishop/Queen) - Diagonal
-	dirs = []int{-9, -7, 7, 9} 
+	dirs = []int{-9, -7, 7, 9}
 	for _, d := range dirs {
 		if checkSlider(b, sq, d, attackerColor, Bishop) {
 			return true
@@ -130,12 +128,14 @@ func checkSlider(b *Board, start int, step int, color Color, pType PieceType) bo
 		// Prevent wrapping
 		currRank := cursor / 8
 		currFile := cursor % 8
-		
+
 		// If moving horizontally, rank must stay same
-		if abs(step) == 1 && currRank != startRank { break }
-		// If moving diagonally/vertically, logic handles itself mostly, 
+		if abs(step) == 1 && currRank != startRank {
+			break
+		}
+		// If moving diagonally/vertically, logic handles itself mostly,
 		// but let's be safe: pure diagonal difference in rank/file is equal.
-		
+
 		target := b[cursor]
 		if target.Type == Empty {
 			continue
@@ -153,6 +153,8 @@ func checkSlider(b *Board, start int, step int, color Color, pType PieceType) bo
 }
 
 func abs(x int) int {
-	if x < 0 { return -x }
+	if x < 0 {
+		return -x
+	}
 	return x
 }
