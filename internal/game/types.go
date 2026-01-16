@@ -1,7 +1,5 @@
 package game
 
-// import "fmt"
-
 // Color represents the side (White or Black)
 type Color int
 
@@ -10,7 +8,6 @@ const (
 	Black
 )
 
-// String returns the string representation of the color
 func (c Color) String() string {
 	if c == White {
 		return "White"
@@ -57,25 +54,30 @@ type Piece struct {
 }
 
 // Board represents the 8x8 chess board
-// We use a 1D array of size 64.
-// Index 0 = a1, 7 = h1, ..., 63 = h8
 type Board [64]Piece
+
+// MoveType helps identify special moves
+type MoveType int
+
+const (
+	MoveNormal MoveType = iota
+	MoveCastling
+	MoveEnPassant
+)
 
 // Move represents a single move
 type Move struct {
-	From      int       // Square index (0-63)
-	To        int       // Square index (0-63)
-	Piece     PieceType // The piece being moved
-	Promotion PieceType // If pawn promotion, what type? (Empty otherwise)
+	From      int
+	To        int
+	Piece     PieceType
+	Promotion PieceType // If pawn promotion, what type?
+	MoveType  MoveType  // Normal, Castling, or EnPassant
 }
 
-// String provides a simple debug print for the piece
 func (p Piece) String() string {
 	if p.Type == Empty {
 		return "."
 	}
-	// Simple ASCII representation
-	// We will make a better renderer later
 	switch p.Type {
 	case Pawn:
 		if p.Color == White {
@@ -117,18 +119,30 @@ func (p Piece) String() string {
 	return "?"
 }
 
+// CastlingRights tracks permissions
+type CastlingRights struct {
+	WhiteKingSide  bool
+	WhiteQueenSide bool
+	BlackKingSide  bool
+	BlackQueenSide bool
+}
+
 type Game struct {
-	Board   Board
-	Turn    Color
-	History []Move
+	Board           Board
+	Turn            Color
+	History         []Move
+	Castling        CastlingRights
+	EnPassantTarget int // Index of the square behind the pawn, -1 if none
 }
 
 // NewGame returns a game with the starting position
 func NewGame() *Game {
 	g := &Game{
-		Turn:    White,
-		History: make([]Move, 0),
+		Turn:            White,
+		History:         make([]Move, 0),
+		EnPassantTarget: -1,
+		Castling:        CastlingRights{true, true, true, true},
 	}
-	g.Board.LoadFEN(StartFEN)
+	g.LoadFEN(StartFEN)
 	return g
 }
