@@ -5,20 +5,16 @@ import (
 	"unicode"
 )
 
-// LoadFEN parses a FEN string and updates the board
-func (b *Board) LoadFEN(fen string) {
-	// 1. Split the FEN into parts (Board, Turn, Castling, EnPassant, etc.)
-	// We only care about the first part (piece placement) for now.
+// LoadFEN parses a FEN string and updates the Game state
+func (g *Game) LoadFEN(fen string) {
 	parts := strings.Split(fen, " ")
+
+	// 1. Piece Placement
 	piecePlacement := parts[0]
+	g.Board = Board{} // Clear board
 
-	// 2. Clear the board first
-	*b = Board{}
-
-	// 3. Loop through the FEN string
-	// FEN starts at Rank 8 (index 56) and goes down to Rank 1 (index 0)
-	rank := 7 // Rank 8 is index 7 (0-indexed)
-	file := 0 // File A is index 0
+	rank := 7
+	file := 0
 
 	for _, char := range piecePlacement {
 		if char == '/' {
@@ -28,19 +24,55 @@ func (b *Board) LoadFEN(fen string) {
 		}
 
 		if unicode.IsDigit(char) {
-			// If it's a number (e.g., '8'), skip that many empty squares
 			emptyCount := int(char - '0')
 			file += emptyCount
 		} else {
-			// It's a piece character
 			index := rank*8 + file
-			b[index] = charToPiece(char)
+			g.Board[index] = charToPiece(char)
 			file++
+		}
+	}
+
+	// 2. Turn
+	if len(parts) > 1 {
+		if parts[1] == "w" {
+			g.Turn = White
+		} else {
+			g.Turn = Black
+		}
+	}
+
+	// 3. Castling Rights
+	// Default to false, then enable based on string
+	g.Castling = CastlingRights{}
+	if len(parts) > 2 {
+		c := parts[2]
+		if c != "-" {
+			for _, char := range c {
+				switch char {
+				case 'K':
+					g.Castling.WhiteKingSide = true
+				case 'Q':
+					g.Castling.WhiteQueenSide = true
+				case 'k':
+					g.Castling.BlackKingSide = true
+				case 'q':
+					g.Castling.BlackQueenSide = true
+				}
+			}
+		}
+	}
+
+	// 4. En Passant
+	g.EnPassantTarget = -1
+	if len(parts) > 3 {
+		ep := parts[3]
+		if ep != "-" {
+			g.EnPassantTarget = CoordToIndex(ep)
 		}
 	}
 }
 
-// Helper to convert FEN character to Piece
 func charToPiece(char rune) Piece {
 	switch char {
 	case 'P':
