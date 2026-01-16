@@ -119,28 +119,44 @@ func (g *Game) getKingMoves(sq int) []Move {
 
 	if g.Turn == White {
 		// White Short (King e1 -> g1)
-		if g.Castling.WhiteKingSide && b[61].Type == Empty && b[62].Type == Empty {
+		if g.Castling.WhiteKingSide &&
+			b[61].Type == Empty && b[62].Type == Empty &&
+			b[63].Type == Rook && b[63].Color == White {
 			// Check if f1(61) or g1(62) is attacked
-			if !b.IsSquareAttacked(61, Black) && !b.IsSquareAttacked(62, Black) {
+			if !b.IsSquareAttacked(60, Black) && // e1
+				!b.IsSquareAttacked(61, Black) && // f1
+				!b.IsSquareAttacked(62, Black) { // g1
 				moves = append(moves, Move{From: sq, To: 62, Piece: King, MoveType: MoveCastling})
 			}
 		}
 		// White Long (King e1 -> c1)
-		if g.Castling.WhiteQueenSide && b[59].Type == Empty && b[58].Type == Empty && b[57].Type == Empty {
-			if !b.IsSquareAttacked(59, Black) && !b.IsSquareAttacked(58, Black) {
+		if g.Castling.WhiteQueenSide &&
+			b[57].Type == Empty && b[58].Type == Empty && b[59].Type == Empty &&
+			b[56].Type == Rook && b[56].Color == White {
+			if !b.IsSquareAttacked(60, Black) && // e1
+				!b.IsSquareAttacked(59, Black) && // d1
+				!b.IsSquareAttacked(58, Black) { // c1
 				moves = append(moves, Move{From: sq, To: 58, Piece: King, MoveType: MoveCastling})
 			}
 		}
 	} else {
 		// Black Short (King e8 -> g8)
-		if g.Castling.BlackKingSide && b[5].Type == Empty && b[6].Type == Empty {
-			if !b.IsSquareAttacked(5, White) && !b.IsSquareAttacked(6, White) {
+		if g.Castling.BlackKingSide &&
+			b[5].Type == Empty && b[6].Type == Empty &&
+			b[7].Type == Rook && b[7].Color == Black {
+			if !b.IsSquareAttacked(4, White) && // e8
+				!b.IsSquareAttacked(5, White) && // f8
+				!b.IsSquareAttacked(6, White) { // g8
 				moves = append(moves, Move{From: sq, To: 6, Piece: King, MoveType: MoveCastling})
 			}
 		}
 		// Black Long (King e8 -> c8)
-		if g.Castling.BlackQueenSide && b[3].Type == Empty && b[2].Type == Empty && b[1].Type == Empty {
-			if !b.IsSquareAttacked(3, White) && !b.IsSquareAttacked(2, White) {
+		if g.Castling.BlackQueenSide &&
+			b[1].Type == Empty && b[2].Type == Empty && b[3].Type == Empty &&
+			b[0].Type == Rook && b[0].Color == Black {
+			if !b.IsSquareAttacked(4, White) && // e8
+				!b.IsSquareAttacked(3, White) && // d8
+				!b.IsSquareAttacked(2, White) { // c8
 				moves = append(moves, Move{From: sq, To: 2, Piece: King, MoveType: MoveCastling})
 			}
 		}
