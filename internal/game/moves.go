@@ -22,7 +22,6 @@ func (g *Game) isMoveLegal(m Move) bool {
 	originalEP := g.EnPassantTarget
 
 	// Execute move on temp board
-	movingPiece := tempBoard[m.From]
 	tempBoard[m.To] = tempBoard[m.From]
 	tempBoard[m.From] = Piece{Type: Empty}
 
