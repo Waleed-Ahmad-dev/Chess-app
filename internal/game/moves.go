@@ -1,58 +1,11 @@
 package game
 
 func (g *Game) GenerateLegalMoves() []Move {
-	// 1. Generate all physical moves (now includes Castling/EP candidates)
 	pseudoMoves := g.GeneratePseudoLegalMoves()
 	legalMoves := []Move{}
 
-	// 2. Filter them
 	for _, m := range pseudoMoves {
-		// Create a temporary board copy
-		tempBoard := g.Board
-
-		// Execute move on temp board explicitly for check testing
-		// Logic mirrors MakeMove but without updating History/State
-
-		// Move the main piece
-		tempBoard[m.To] = tempBoard[m.From]
-		tempBoard[m.From] = Piece{Type: Empty}
-		if m.Promotion != Empty {
-			tempBoard[m.To] = Piece{Type: m.Promotion, Color: g.Turn}
-		}
-
-		// Handle En Passant Capture on Temp Board
-		if m.MoveType == MoveEnPassant {
-			// Remove the captured pawn
-			var captureSq int
-			if g.Turn == White {
-				captureSq = m.To - 8 // Pawn is below the target
-			} else {
-				captureSq = m.To + 8 // Pawn is above the target
-			}
-			tempBoard[captureSq] = Piece{Type: Empty}
-		}
-
-		// Handle Castling Rook Move on Temp Board
-		if m.MoveType == MoveCastling {
-			// King has already moved in lines above. Move the rook.
-			switch m.To {
-			case 62: // White Short (g1) -> Move Rook h1 to f1
-				tempBoard[61] = tempBoard[63]
-				tempBoard[63] = Piece{Type: Empty}
-			case 58: // White Long (c1) -> Move Rook a1 to d1
-				tempBoard[59] = tempBoard[56]
-				tempBoard[56] = Piece{Type: Empty}
-			case 6: // Black Short (g8) -> Move Rook h8 to f8
-				tempBoard[5] = tempBoard[7]
-				tempBoard[7] = Piece{Type: Empty}
-			case 2: // Black Long (c8) -> Move Rook a8 to d8
-				tempBoard[3] = tempBoard[0]
-				tempBoard[0] = Piece{Type: Empty}
-			}
-		}
-
-		// 3. Verify King Safety
-		if !tempBoard.InCheck(g.Turn) {
+		if g.isMoveLegal(m) {
 			legalMoves = append(legalMoves, m)
 		}
 	}
@@ -60,7 +13,61 @@ func (g *Game) GenerateLegalMoves() []Move {
 	return legalMoves
 }
 
-// GeneratePseudoLegalMoves returns all possible moves for the active color
+// isMoveLegal checks if a move is legal by simulating it and checking if king is safe
+func (g *Game) isMoveLegal(m Move) bool {
+	// Create a temporary board copy
+	tempBoard := g.Board
+
+	// Store original en passant target for restoration
+	originalEP := g.EnPassantTarget
+
+	// Execute move on temp board
+	movingPiece := tempBoard[m.From]
+	tempBoard[m.To] = tempBoard[m.From]
+	tempBoard[m.From] = Piece{Type: Empty}
+
+	if m.Promotion != Empty {
+		tempBoard[m.To] = Piece{Type: m.Promotion, Color: g.Turn}
+	}
+
+	// Handle En Passant Capture
+	if m.MoveType == MoveEnPassant {
+		var captureSq int
+		if g.Turn == White {
+			captureSq = m.To - 8
+		} else {
+			captureSq = m.To + 8
+		}
+		tempBoard[captureSq] = Piece{Type: Empty}
+	}
+
+	// Handle Castling Rook Move
+	if m.MoveType == MoveCastling {
+		switch m.To {
+		case 62: // White Short
+			tempBoard[61] = tempBoard[63]
+			tempBoard[63] = Piece{Type: Empty}
+		case 58: // White Long
+			tempBoard[59] = tempBoard[56]
+			tempBoard[56] = Piece{Type: Empty}
+		case 6: // Black Short
+			tempBoard[5] = tempBoard[7]
+			tempBoard[7] = Piece{Type: Empty}
+		case 2: // Black Long
+			tempBoard[3] = tempBoard[0]
+			tempBoard[0] = Piece{Type: Empty}
+		}
+	}
+
+	// Verify King Safety
+	isLegal := !tempBoard.InCheck(g.Turn)
+
+	// Restore en passant target
+	g.EnPassantTarget = originalEP
+
+	return isLegal
+}
+
 func (g *Game) GeneratePseudoLegalMoves() []Move {
 	moves := []Move{}
 	turn := g.Turn
@@ -110,54 +117,53 @@ func (g *Game) getKingMoves(sq int) []Move {
 	}
 	b.addSteppingMoves(sq, offsets, &moves)
 
-	// 2. Castling
-	// Requirements: King not moved, Rook not moved, Path empty, Not in Check, Path not Attacked
-
+	// 2. Castling - only add if not in check
 	if b.InCheck(g.Turn) {
-		return moves // Cannot castle out of check
+		return moves
 	}
 
 	if g.Turn == White {
-		// White Short (King e1 -> g1)
-		if g.Castling.WhiteKingSide &&
-			b[61].Type == Empty && b[62].Type == Empty &&
-			b[63].Type == Rook && b[63].Color == White {
-			// Check if f1(61) or g1(62) is attacked
-			if !b.IsSquareAttacked(60, Black) && // e1
-				!b.IsSquareAttacked(61, Black) && // f1
-				!b.IsSquareAttacked(62, Black) { // g1
-				moves = append(moves, Move{From: sq, To: 62, Piece: King, MoveType: MoveCastling})
+		// White Short Castling (e1 -> g1)
+		if g.Castling.WhiteKingSide && sq == 60 { // King must be on e1
+			if b[61].Type == Empty && b[62].Type == Empty && // f1 and g1 empty
+				b[63].Type == Rook && b[63].Color == White { // Rook on h1
+				// Check that f1 and g1 are not attacked
+				if !b.IsSquareAttacked(61, Black) && !b.IsSquareAttacked(62, Black) {
+					moves = append(moves, Move{From: sq, To: 62, Piece: King, MoveType: MoveCastling})
+				}
 			}
 		}
-		// White Long (King e1 -> c1)
-		if g.Castling.WhiteQueenSide &&
-			b[57].Type == Empty && b[58].Type == Empty && b[59].Type == Empty &&
-			b[56].Type == Rook && b[56].Color == White {
-			if !b.IsSquareAttacked(60, Black) && // e1
-				!b.IsSquareAttacked(59, Black) && // d1
-				!b.IsSquareAttacked(58, Black) { // c1
-				moves = append(moves, Move{From: sq, To: 58, Piece: King, MoveType: MoveCastling})
+
+		// White Long Castling (e1 -> c1)
+		if g.Castling.WhiteQueenSide && sq == 60 { // King must be on e1
+			if b[59].Type == Empty && b[58].Type == Empty && b[57].Type == Empty && // d1, c1, b1 empty
+				b[56].Type == Rook && b[56].Color == White { // Rook on a1
+				// Check that d1 and c1 are not attacked (b1 doesn't matter)
+				if !b.IsSquareAttacked(59, Black) && !b.IsSquareAttacked(58, Black) {
+					moves = append(moves, Move{From: sq, To: 58, Piece: King, MoveType: MoveCastling})
+				}
 			}
 		}
 	} else {
-		// Black Short (King e8 -> g8)
-		if g.Castling.BlackKingSide &&
-			b[5].Type == Empty && b[6].Type == Empty &&
-			b[7].Type == Rook && b[7].Color == Black {
-			if !b.IsSquareAttacked(4, White) && // e8
-				!b.IsSquareAttacked(5, White) && // f8
-				!b.IsSquareAttacked(6, White) { // g8
-				moves = append(moves, Move{From: sq, To: 6, Piece: King, MoveType: MoveCastling})
+		// Black Short Castling (e8 -> g8)
+		if g.Castling.BlackKingSide && sq == 4 { // King must be on e8
+			if b[5].Type == Empty && b[6].Type == Empty && // f8 and g8 empty
+				b[7].Type == Rook && b[7].Color == Black { // Rook on h8
+				// Check that f8 and g8 are not attacked
+				if !b.IsSquareAttacked(5, White) && !b.IsSquareAttacked(6, White) {
+					moves = append(moves, Move{From: sq, To: 6, Piece: King, MoveType: MoveCastling})
+				}
 			}
 		}
-		// Black Long (King e8 -> c8)
-		if g.Castling.BlackQueenSide &&
-			b[1].Type == Empty && b[2].Type == Empty && b[3].Type == Empty &&
-			b[0].Type == Rook && b[0].Color == Black {
-			if !b.IsSquareAttacked(4, White) && // e8
-				!b.IsSquareAttacked(3, White) && // d8
-				!b.IsSquareAttacked(2, White) { // c8
-				moves = append(moves, Move{From: sq, To: 2, Piece: King, MoveType: MoveCastling})
+
+		// Black Long Castling (e8 -> c8)
+		if g.Castling.BlackQueenSide && sq == 4 { // King must be on e8
+			if b[3].Type == Empty && b[2].Type == Empty && b[1].Type == Empty && // d8, c8, b8 empty
+				b[0].Type == Rook && b[0].Color == Black { // Rook on a8
+				// Check that d8 and c8 are not attacked (b8 doesn't matter)
+				if !b.IsSquareAttacked(3, White) && !b.IsSquareAttacked(2, White) {
+					moves = append(moves, Move{From: sq, To: 2, Piece: King, MoveType: MoveCastling})
+				}
 			}
 		}
 	}
@@ -168,6 +174,7 @@ func (g *Game) getKingMoves(sq int) []Move {
 func (b *Board) addSteppingMoves(sq int, offsets [][2]int, moves *[]Move) {
 	startRank := sq / 8
 	startFile := sq % 8
+	movingPiece := b[sq]
 
 	for _, off := range offsets {
 		dFile, dRank := off[0], off[1]
@@ -178,8 +185,9 @@ func (b *Board) addSteppingMoves(sq int, offsets [][2]int, moves *[]Move) {
 			targetSq := targetRank*8 + targetFile
 			targetPiece := b[targetSq]
 
-			if targetPiece.Type == Empty || targetPiece.Color != b[sq].Color {
-				*moves = append(*moves, Move{From: sq, To: targetSq, Piece: b[sq].Type})
+			// Can only move to empty square or capture opponent's piece (NOT own piece)
+			if targetPiece.Type == Empty || targetPiece.Color != movingPiece.Color {
+				*moves = append(*moves, Move{From: sq, To: targetSq, Piece: movingPiece.Type})
 			}
 		}
 	}
@@ -218,10 +226,11 @@ func (b *Board) getSlidingMoves(sq int) []Move {
 			if targetPiece.Type == Empty {
 				moves = append(moves, Move{From: sq, To: targetSq, Piece: piece.Type})
 			} else {
+				// Can capture opponent's piece, but not own piece
 				if targetPiece.Color != piece.Color {
 					moves = append(moves, Move{From: sq, To: targetSq, Piece: piece.Type})
 				}
-				break
+				break // Blocked by any piece
 			}
 		}
 	}
@@ -240,9 +249,12 @@ func (g *Game) getPawnMoves(sq int) []Move {
 
 	direction := 1
 	startRank := 1
+	promotionRank := 7
+
 	if piece.Color == Black {
 		direction = -1
 		startRank = 6
+		promotionRank = 0
 	}
 
 	// 1. Forward Move
@@ -250,8 +262,8 @@ func (g *Game) getPawnMoves(sq int) []Move {
 	if targetRank >= 0 && targetRank < 8 {
 		targetSq := targetRank*8 + file
 		if b[targetSq].Type == Empty {
-			// Promotion?
-			if targetRank == 7 || targetRank == 0 {
+			// Check for promotion
+			if targetRank == promotionRank {
 				promotions := []PieceType{Queen, Rook, Bishop, Knight}
 				for _, p := range promotions {
 					moves = append(moves, Move{From: sq, To: targetSq, Piece: Pawn, Promotion: p})
@@ -260,7 +272,7 @@ func (g *Game) getPawnMoves(sq int) []Move {
 				moves = append(moves, Move{From: sq, To: targetSq, Piece: Pawn})
 			}
 
-			// 2. Double Move
+			// 2. Double Move from starting position
 			if rank == startRank {
 				doubleRank := rank + (2 * direction)
 				doubleSq := doubleRank*8 + file
@@ -277,13 +289,13 @@ func (g *Game) getPawnMoves(sq int) []Move {
 		captureFile := file + off
 		if captureFile >= 0 && captureFile < 8 {
 			targetRank := rank + direction
-			targetSq := targetRank*8 + captureFile
-
-			// Normal Capture
 			if targetRank >= 0 && targetRank < 8 {
+				targetSq := targetRank*8 + captureFile
 				targetPiece := b[targetSq]
+
+				// Normal Capture - must be opponent's piece
 				if targetPiece.Type != Empty && targetPiece.Color != piece.Color {
-					if targetRank == 7 || targetRank == 0 {
+					if targetRank == promotionRank {
 						promotions := []PieceType{Queen, Rook, Bishop, Knight}
 						for _, p := range promotions {
 							moves = append(moves, Move{From: sq, To: targetSq, Piece: Pawn, Promotion: p})
@@ -294,7 +306,6 @@ func (g *Game) getPawnMoves(sq int) []Move {
 				}
 
 				// En Passant Capture
-				// Condition: Target square is empty AND matches EnPassantTarget
 				if targetPiece.Type == Empty && targetSq == g.EnPassantTarget {
 					moves = append(moves, Move{From: sq, To: targetSq, Piece: Pawn, MoveType: MoveEnPassant})
 				}
