@@ -29,19 +29,20 @@ func (g *Game) MakeMove(m Move) {
 
 	// Handle Castling (move the rook)
 	if m.MoveType == MoveCastling {
-		if m.To == 62 { // White Short: h1->f1
+		switch m.To {
+		case 62: // White Short: h1->f1
 			rook := g.Board[63]
 			g.Board[63] = Piece{Type: Empty}
 			g.Board[61] = rook
-		} else if m.To == 58 { // White Long: a1->d1
+		case 58: // White Long: a1->d1
 			rook := g.Board[56]
 			g.Board[56] = Piece{Type: Empty}
 			g.Board[59] = rook
-		} else if m.To == 6 { // Black Short: h8->f8
+		case 6: // Black Short: h8->f8
 			rook := g.Board[7]
 			g.Board[7] = Piece{Type: Empty}
 			g.Board[5] = rook
-		} else if m.To == 2 { // Black Long: a8->d8
+		case 2: // Black Long: a8->d8
 			rook := g.Board[0]
 			g.Board[0] = Piece{Type: Empty}
 			g.Board[3] = rook

@@ -35,16 +35,17 @@ func (g *Game) GenerateLegalMoves() []Move {
 		// Handle Castling Rook Move on Temp Board
 		if m.MoveType == MoveCastling {
 			// King has already moved in lines above. Move the rook.
-			if m.To == 62 { // White Short (g1) -> Move Rook h1 to f1
+			switch m.To {
+			case 62: // White Short (g1) -> Move Rook h1 to f1
 				tempBoard[61] = tempBoard[63]
 				tempBoard[63] = Piece{Type: Empty}
-			} else if m.To == 58 { // White Long (c1) -> Move Rook a1 to d1
+			case 58: // White Long (c1) -> Move Rook a1 to d1
 				tempBoard[59] = tempBoard[56]
 				tempBoard[56] = Piece{Type: Empty}
-			} else if m.To == 6 { // Black Short (g8) -> Move Rook h8 to f8
+			case 6: // Black Short (g8) -> Move Rook h8 to f8
 				tempBoard[5] = tempBoard[7]
 				tempBoard[7] = Piece{Type: Empty}
-			} else if m.To == 2 { // Black Long (c8) -> Move Rook a8 to d8
+			case 2: // Black Long (c8) -> Move Rook a8 to d8
 				tempBoard[3] = tempBoard[0]
 				tempBoard[0] = Piece{Type: Empty}
 			}
