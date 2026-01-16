@@ -40,8 +40,7 @@ func (b *Board) IsSquareAttacked(sq int, attackerColor Color) bool {
 		pawnDir = 1 // Black pawns come from above, so we look up
 	}
 
-	pawnAttacks := []int{sq + 8 + 1, sq + 8 - 1} // Check diagonals (simplified rank math below)
-	// Actually, let's use explicit math:
+	// Check diagonals explicitly
 	rank := sq / 8
 	file := sq % 8
 
@@ -133,8 +132,13 @@ func checkSlider(b *Board, start int, step int, color Color, pType PieceType) bo
 		if abs(step) == 1 && currRank != startRank {
 			break
 		}
-		// If moving diagonally/vertically, logic handles itself mostly,
-		// but let's be safe: pure diagonal difference in rank/file is equal.
+
+		// If moving diagonally (step is not 1 or 8), rank diff must match file diff
+		if abs(step) != 1 && abs(step) != 8 {
+			if abs(currRank-startRank) != abs(currFile-startFile) {
+				break
+			}
+		}
 
 		target := b[cursor]
 		if target.Type == Empty {
