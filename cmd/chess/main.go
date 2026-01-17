@@ -10,6 +10,7 @@ import (
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/server"
+	"github.com/Waleed-Ahmad-dev/Chess-app/internal/sound"
 )
 
 func main() {
@@ -19,6 +20,22 @@ func main() {
 		fmt.Println("Open your browser and go to: http://localhost:8080")
 		server.StartServer()
 		return
+	}
+
+	// Check for sound disable flag
+	soundEnabled := true
+	for _, arg := range os.Args[1:] {
+		if arg == "--no-sound" || arg == "-n" {
+			soundEnabled = false
+			break
+		}
+	}
+
+	if soundEnabled {
+		sound.EnableSound()
+	} else {
+		sound.DisableSound()
+		fmt.Println("Sound disabled. Use --no-sound or -n to disable sound.")
 	}
 
 	// Original CLI mode
@@ -37,6 +54,9 @@ func main() {
 		if len(legalMoves) == 0 {
 			if gameInstance.Board.InCheck(gameInstance.Turn) {
 				fmt.Printf("\nCheckmate! %s wins!\n", getOpponentColor(gameInstance.Turn))
+				if soundEnabled {
+					sound.PlaySound(sound.SoundCheckmate)
+				}
 			} else {
 				fmt.Println("\nStalemate! The game is a draw.")
 			}
@@ -63,21 +83,29 @@ func main() {
 		move, err := game.ParseMove(input, legalMoves)
 		if err != nil {
 			fmt.Printf("Error: %v\nPress Enter to try again...", err)
+			if soundEnabled {
+				sound.PlaySound(sound.SoundIllegal)
+			}
 			reader.ReadString('\n') // Wait for user to read error
 			continue
 		}
 
 		// 6. Execute Move
-		gameInstance.MakeMove(move)
+		result := gameInstance.MakeMove(move)
+
+		// 7. Play appropriate sound
+		if soundEnabled {
+			playMoveSound(result)
+		}
 	}
 }
 
 // Helper to clear the terminal screen
 func clearScreen() {
-	// Standard ANSI escape code to clear screen (Works on Arch Linux/Mac/Most Unix)
+	// Standard ANSI escape code to clear screen
 	fmt.Print("\033[H\033[2J")
 
-	// Fallback for Windows if needed (though ANSI often works there too now)
+	// Fallback for Windows
 	if runtime.GOOS == "windows" {
 		cmd := exec.Command("cmd", "/c", "cls")
 		cmd.Stdout = os.Stdout
@@ -90,4 +118,35 @@ func getOpponentColor(c game.Color) string {
 		return "Black"
 	}
 	return "White"
+}
+
+// playMoveSound plays the appropriate sound for a move
+func playMoveSound(result game.MoveResult) {
+	if result.WasCheckmate {
+		sound.PlaySound(sound.SoundCheckmate)
+		return
+	}
+
+	if result.WasCheck {
+		sound.PlaySound(sound.SoundCheck)
+		return
+	}
+
+	if result.WasCastle {
+		sound.PlaySound(sound.SoundCastle)
+		return
+	}
+
+	if result.WasPromotion {
+		sound.PlaySound(sound.SoundPromote)
+		return
+	}
+
+	if result.WasCapture {
+		sound.PlaySound(sound.SoundCapture)
+		return
+	}
+
+	// Default move sound
+	sound.PlaySound(sound.SoundMove)
 }
