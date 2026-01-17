@@ -1,8 +1,10 @@
 package server
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"sync"
@@ -10,6 +12,9 @@ import (
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
 )
+
+//go:embed assets
+var assetsFS embed.FS
 
 var (
 	sessions     = make(map[string]*game.Game)
@@ -55,8 +60,15 @@ func StartServer() {
 }
 
 func serveHome(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(htmlContent))
+	// Use fs.Sub to route the "assets" folder to the root "/"
+	// This ensures http.FileServer finds "index.html" at the root
+	assets, err := fs.Sub(assetsFS, "assets")
+	if err != nil {
+		log.Printf("Failed to sub-fs assets: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	http.FileServer(http.FS(assets)).ServeHTTP(w, r)
 }
 
 func handleNewGame(w http.ResponseWriter, r *http.Request) {
