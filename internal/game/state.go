@@ -1,17 +1,16 @@
 package game
 
 // MakeMove executes a move on the board and updates game state
-func (g *Game) MakeMove(m Move) {
-	// --- Phase 2: Capture State Snapshot ---
-	// We capture the state *before* the move is executed.
+func (g *Game) MakeMove(m Move) MoveResult {
+	// --- Capture State Snapshot ---
 	var lastMove Move
 	if len(g.History) > 0 {
 		lastMove = g.History[len(g.History)-1]
 	}
 
 	snapshot := StateSnapshot{
-		Board:           g.Board,    // Arrays are copied by value
-		Castling:        g.Castling, // Structs are copied by value
+		Board:           g.Board,
+		Castling:        g.Castling,
 		EnPassantTarget: g.EnPassantTarget,
 		Turn:            g.Turn,
 		LastMove:        lastMove,
@@ -19,24 +18,24 @@ func (g *Game) MakeMove(m Move) {
 	g.StateHistory = append(g.StateHistory, snapshot)
 	// ----------------------------------------
 
-	// Store the captured piece for rook capture check
+	// Store original pieces for sound detection
+	targetPiece := g.Board[m.To]
+
+	wasCapture := targetPiece.Type != Empty
+	wasCastle := m.MoveType == MoveCastling
+	wasPromotion := m.Promotion != Empty
+
+	// Execute the move (existing code remains the same)
 	capturedPiece := g.Board[m.To]
-
-	// 1. Identify the moving piece
 	movingPiece := g.Board[m.From]
-
-	// 2. Clear the old square
 	g.Board[m.From] = Piece{Type: Empty}
 
-	// 3. Update the new square
 	if m.Promotion != Empty {
 		movingPiece.Type = m.Promotion
 	}
 	g.Board[m.To] = movingPiece
 
 	// --- Special Move Logic ---
-
-	// Handle En Passant Capture (remove the victim pawn)
 	if m.MoveType == MoveEnPassant {
 		var captureSq int
 		if g.Turn == White {
@@ -45,45 +44,40 @@ func (g *Game) MakeMove(m Move) {
 			captureSq = m.To + 8
 		}
 		g.Board[captureSq] = Piece{Type: Empty}
+		wasCapture = true
 	}
 
-	// Handle Castling (move the rook)
 	if m.MoveType == MoveCastling {
 		switch m.To {
-		case 62: // White Short: h1->f1
+		case 62:
 			rook := g.Board[63]
 			g.Board[63] = Piece{Type: Empty}
 			g.Board[61] = rook
-		case 58: // White Long: a1->d1
+		case 58:
 			rook := g.Board[56]
 			g.Board[56] = Piece{Type: Empty}
 			g.Board[59] = rook
-		case 6: // Black Short: h8->f8
+		case 6:
 			rook := g.Board[7]
 			g.Board[7] = Piece{Type: Empty}
 			g.Board[5] = rook
-		case 2: // Black Long: a8->d8
+		case 2:
 			rook := g.Board[0]
 			g.Board[0] = Piece{Type: Empty}
 			g.Board[3] = rook
 		}
 	}
 
-	// --- Update Game State (Rights) ---
-
-	// Update En Passant Target
-	g.EnPassantTarget = -1 // Default to none
+	// Update game state
+	g.EnPassantTarget = -1
 	if movingPiece.Type == Pawn {
 		diff := m.To - m.From
-		// If moved 2 squares (diff 16 or -16)
 		if diff == 16 || diff == -16 {
-			// Target is the square skipped
 			g.EnPassantTarget = m.From + (diff / 2)
 		}
 	}
 
 	// Update Castling Rights
-	// If King moves, lose both rights
 	if movingPiece.Type == King {
 		if g.Turn == White {
 			g.Castling.WhiteKingSide = false
@@ -94,46 +88,79 @@ func (g *Game) MakeMove(m Move) {
 		}
 	}
 
-	// If Rook moves, lose specific right
-	// We check specific starting squares for rooks
 	if movingPiece.Type == Rook {
 		if m.From == 63 {
 			g.Castling.WhiteKingSide = false
-		} // h1
+		}
 		if m.From == 56 {
 			g.Castling.WhiteQueenSide = false
-		} // a1
+		}
 		if m.From == 7 {
 			g.Castling.BlackKingSide = false
-		} // h8
+		}
 		if m.From == 0 {
-			g.Castling.BlackQueenSide = false
-		} // a8
-	}
-
-	// If a rook is captured, remove castling rights for that side
-	if capturedPiece.Type == Rook {
-		switch m.To {
-		case 63: // h1
-			g.Castling.WhiteKingSide = false
-		case 56: // a1
-			g.Castling.WhiteQueenSide = false
-		case 7: // h8
-			g.Castling.BlackKingSide = false
-		case 0: // a8
 			g.Castling.BlackQueenSide = false
 		}
 	}
 
-	// 4. Record the move in history
+	if capturedPiece.Type == Rook {
+		switch m.To {
+		case 63:
+			g.Castling.WhiteKingSide = false
+		case 56:
+			g.Castling.WhiteQueenSide = false
+		case 7:
+			g.Castling.BlackKingSide = false
+		case 0:
+			g.Castling.BlackQueenSide = false
+		}
+	}
+
+	// Record history
 	g.History = append(g.History, m)
 
-	// 5. Switch Turn
+	// Check for check/checkmate after move
+	opponentColor := Black
+	if g.Turn == Black {
+		opponentColor = White
+	}
+
+	wasCheck := g.Board.InCheck(opponentColor)
+	wasCheckmate := false
+
+	if wasCheck {
+		// Generate opponent's moves to check if it's checkmate
+		tempGame := &Game{
+			Board:           g.Board,
+			Turn:            opponentColor,
+			Castling:        g.Castling,
+			EnPassantTarget: g.EnPassantTarget,
+		}
+		opponentMoves := tempGame.GenerateLegalMoves()
+		wasCheckmate = len(opponentMoves) == 0
+	}
+
+	// Create move result
+	result := MoveResult{
+		Move:         m,
+		WasCapture:   wasCapture,
+		WasCheck:     wasCheck,
+		WasCheckmate: wasCheckmate,
+		WasCastle:    wasCastle,
+		WasPromotion: wasPromotion,
+		WasIllegal:   false,
+	}
+
+	g.MoveResults = append(g.MoveResults, result)
+
+	// Switch turn
 	if g.Turn == White {
 		g.Turn = Black
 	} else {
 		g.Turn = White
 	}
+
+	return result
 }
 
 // UndoMove reverts the last move using the StateStack
@@ -163,4 +190,12 @@ func (g *Game) UndoMove() {
 	if len(g.History) > 0 {
 		g.History = g.History[:len(g.History)-1]
 	}
+}
+
+// GetLastMoveResult returns the last move result
+func (g *Game) GetLastMoveResult() *MoveResult {
+	if len(g.MoveResults) == 0 {
+		return nil
+	}
+	return &g.MoveResults[len(g.MoveResults)-1]
 }
