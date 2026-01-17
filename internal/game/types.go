@@ -143,6 +143,7 @@ type Game struct {
 	StateHistory    []StateSnapshot // Stack for Undo functionality
 	Castling        CastlingRights
 	EnPassantTarget int
+	MoveResults     []MoveResult // Track move results for sound
 }
 
 // NewGame returns a game with the starting position
@@ -156,4 +157,15 @@ func NewGame() *Game {
 	}
 	g.LoadFEN(StartFEN)
 	return g
+}
+
+// MoveResult contains information about the move outcome
+type MoveResult struct {
+	Move         Move
+	WasCapture   bool
+	WasCheck     bool
+	WasCheckmate bool
+	WasCastle    bool
+	WasPromotion bool
+	WasIllegal   bool
 }
