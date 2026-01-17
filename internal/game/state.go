@@ -2,6 +2,23 @@ package game
 
 // MakeMove executes a move on the board and updates game state
 func (g *Game) MakeMove(m Move) {
+	// --- Phase 2: Capture State Snapshot ---
+	// We capture the state *before* the move is executed.
+	var lastMove Move
+	if len(g.History) > 0 {
+		lastMove = g.History[len(g.History)-1]
+	}
+
+	snapshot := StateSnapshot{
+		Board:           g.Board,    // Arrays are copied by value
+		Castling:        g.Castling, // Structs are copied by value
+		EnPassantTarget: g.EnPassantTarget,
+		Turn:            g.Turn,
+		LastMove:        lastMove,
+	}
+	g.StateHistory = append(g.StateHistory, snapshot)
+	// ----------------------------------------
+
 	// Store the captured piece for rook capture check
 	capturedPiece := g.Board[m.To]
 
@@ -119,33 +136,31 @@ func (g *Game) MakeMove(m Move) {
 	}
 }
 
-// UndoMove reverts the last move
-// Note: This is now significantly harder because we need to restore
-// CastlingRights and EnPassantTarget.
-// For now, we will just revert the physical move as in Phase 4,
-// but note that "Takeback" logic needs a full snapshot history in the future.
+// UndoMove reverts the last move using the StateStack
 func (g *Game) UndoMove() {
-	// Implementation intentionally left simple as per Phase 4 requirements.
-	// A robust undo requires storing previous Castling/EP states in the History struct.
-	if len(g.History) == 0 {
+	// 1. Check if StateHistory is empty
+	if len(g.StateHistory) == 0 {
 		return
 	}
-	lastMove := g.History[len(g.History)-1]
-	g.History = g.History[:len(g.History)-1]
 
-	movedPiece := g.Board[lastMove.To]
-	if lastMove.Promotion != Empty {
-		movedPiece.Type = Pawn
-	}
-	g.Board[lastMove.From] = movedPiece
-	g.Board[lastMove.To] = Piece{Type: Empty}
+	// 2. Pop the last snapshot
+	lastIndex := len(g.StateHistory) - 1
+	snapshot := g.StateHistory[lastIndex]
 
-	// TODO: Restore captured piece and castling rights
-	// This requires storing more information in the Move struct
+	// 3. Overwrite game state with values from the snapshot
+	g.Board = snapshot.Board
+	g.Castling = snapshot.Castling
+	g.EnPassantTarget = snapshot.EnPassantTarget
+	g.Turn = snapshot.Turn
 
-	if g.Turn == White {
-		g.Turn = Black
-	} else {
-		g.Turn = White
+	// 4. Remove the snapshot from the list
+	g.StateHistory = g.StateHistory[:lastIndex]
+
+	// 5. Sync the Move History
+	// Since the snapshot was taken *before* the move was made,
+	// the move currently at the end of g.History is the one we just undid.
+	// We must remove it to keep the history in sync with the board.
+	if len(g.History) > 0 {
+		g.History = g.History[:len(g.History)-1]
 	}
 }
