@@ -221,7 +221,7 @@
             color: var(--text-main);
         }
 
-        /* --- Sound Toggle (New Added Style) --- */
+        /* --- Sound Toggle --- */
         .sound-toggle-container {
             margin-top: auto;
             margin-bottom: 10px;
@@ -246,7 +246,6 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
-            /* margin-top: auto; Removed for Sound Toggle Placement */
         }
 
         button {
@@ -428,7 +427,6 @@
             const soundFiles = ['move', 'capture', 'castle', 'check', 'checkmate', 'illegal', 'promote'];
             
             for (const sound of soundFiles) {
-                // Assuming mp3 files are at root as per previous file structure
                 sounds[sound] = new Audio(`/${sound}.mp3`);
                 sounds[sound].load();
                 
@@ -471,6 +469,27 @@
 
         async function makeMove(from, to, promotion = '') {
             try {
+                // --- Optimistic Sound Prediction ---
+                let predictedSound = 'move';
+                
+                const pieceAtTarget = gameState.board[to];
+                const movingPiece = gameState.board[from];
+                const isCapture = pieceAtTarget !== '.';
+                const isKing = movingPiece.toLowerCase() === 'k';
+                const moveDist = Math.abs(from - to);
+                
+                if (promotion) {
+                    predictedSound = 'promote';
+                } else if (isKing && moveDist === 2) {
+                    predictedSound = 'castle';
+                } else if (isCapture) {
+                    predictedSound = 'capture';
+                }
+                
+                // Play predicted sound IMMEDIATELY (Zero Delay)
+                playSound(predictedSound);
+
+                // --- Send Request ---
                 const move = indexToCoord(from) + indexToCoord(to) + promotion;
                 const response = await fetch('/api/make-move', {
                     method: 'POST',
@@ -484,17 +503,18 @@
                     selectedSquare = null;
                     renderGame();
 
-                    // Play sound based on backend response soundType (from second file logic)
-                    if (data.state.soundType) {
-                        playSound(data.state.soundType);
-                    } else {
-                        // Fallback if backend doesn't send soundType but move was successful
-                        playSound('move');
+                    // --- Server Sound Correction ---
+                    // If the actual result was Check or Checkmate, play that now.
+                    // (It's okay to overlay checking sound after the move click-clack)
+                    const serverSound = data.state.soundType;
+                    if (serverSound === 'check' || serverSound === 'checkmate') {
+                        playSound(serverSound);
+                    } else if (serverSound === 'capture' && predictedSound !== 'capture') {
+                        // Handle en-passant where local capture detection might fail (empty target)
+                        playSound('capture'); 
                     }
                 } else {
-                    playSound('illegal'); // Play error sound
-                    // Optional: You can keep the alert if you want visual feedback too
-                    // alert('Invalid move: ' + data.error); 
+                    playSound('illegal'); // Play error sound (cancel feedback)
                     console.log('Invalid move: ' + data.error);
                 }
             } catch (error) { console.error(error); }
@@ -588,6 +608,11 @@
                 const moveStr = indexToCoord(selectedSquare) + indexToCoord(index);
                 const possibleMoves = gameState.legalMoves.filter(m => m.startsWith(moveStr));
 
+                // Check for move OR King->Rook castling attempt
+                // (Backend now handles King->Rook, but we must allow sending the request even if not in legalMoves list strictly as text)
+                // However, the cleanest way is just to send it if it's a piece click.
+                
+                // If it's a legal move (standard)
                 if (possibleMoves.length > 0) {
                     if (possibleMoves.length === 1) {
                         makeMove(selectedSquare, index);
@@ -596,7 +621,14 @@
                         pendingPromotion = { from: selectedSquare, to: index };
                         showPromotionDialog();
                     }
-                } else if (isOwnPiece) {
+                } 
+                // Special Case: Castling by clicking Rook (King Selected -> Click Rook)
+                // We send it to backend, let backend figure it out.
+                // We only do this if the target is our own Rook.
+                else if (isOwnPiece && piece.toLowerCase() === 'r') {
+                     makeMove(selectedSquare, index);
+                }
+                else if (isOwnPiece) {
                     selectedSquare = index; // Switch selection
                     renderBoard();
                 } else {
