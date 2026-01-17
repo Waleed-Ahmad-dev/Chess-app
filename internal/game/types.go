@@ -127,12 +127,22 @@ type CastlingRights struct {
 	BlackQueenSide bool
 }
 
+// StateSnapshot captures the game state before a move is made
+type StateSnapshot struct {
+	Board           Board
+	Castling        CastlingRights
+	EnPassantTarget int
+	Turn            Color
+	LastMove        Move
+}
+
 type Game struct {
 	Board           Board
 	Turn            Color
 	History         []Move
+	StateHistory    []StateSnapshot // Stack for Undo functionality
 	Castling        CastlingRights
-	EnPassantTarget int // Index of the square behind the pawn, -1 if none
+	EnPassantTarget int
 }
 
 // NewGame returns a game with the starting position
@@ -140,6 +150,7 @@ func NewGame() *Game {
 	g := &Game{
 		Turn:            White,
 		History:         make([]Move, 0),
+		StateHistory:    make([]StateSnapshot, 0),
 		EnPassantTarget: -1,
 		Castling:        CastlingRights{true, true, true, true},
 	}
