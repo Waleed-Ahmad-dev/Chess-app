@@ -221,12 +221,32 @@
             color: var(--text-main);
         }
 
+        /* --- Sound Toggle (New Added Style) --- */
+        .sound-toggle-container {
+            margin-top: auto;
+            margin-bottom: 10px;
+        }
+        
+        .sound-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .sound-toggle:hover { color: var(--text-main); }
+        .sound-toggle input { accent-color: #fff; cursor: pointer; }
+
         /* --- Buttons --- */
         .controls {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
-            margin-top: auto;
+            /* margin-top: auto; Removed for Sound Toggle Placement */
         }
 
         button {
@@ -364,7 +384,15 @@
             </div>
 
             <div class="history-list" id="historyList">
-                </div>
+                <div style="color:#555; text-align:center; padding-top:20px;">History logs...</div>
+            </div>
+
+            <div class="sound-toggle-container">
+                <label class="sound-toggle">
+                    <input type="checkbox" id="soundToggle" checked onchange="toggleSound()">
+                    <span>Enable Sounds</span>
+                </label>
+            </div>
 
             <div class="controls">
                 <button class="btn-secondary" onclick="undoMove()">Undo</button>
@@ -384,12 +412,51 @@
         let gameState = null;
         let selectedSquare = null;
         let pendingPromotion = null;
+        
+        // --- Audio Logic ---
+        let sounds = {};
+        let soundEnabled = true;
 
         const pieceUnicode = {
             'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
             'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
             '.': ''
         };
+
+        // --- Sound Functions ---
+        async function loadSounds() {
+            const soundFiles = ['move', 'capture', 'castle', 'check', 'checkmate', 'illegal', 'promote'];
+            
+            for (const sound of soundFiles) {
+                // Assuming mp3 files are at root as per previous file structure
+                sounds[sound] = new Audio(`/${sound}.mp3`);
+                sounds[sound].load();
+                
+                sounds[sound].onerror = () => {
+                    console.warn(`Could not load sound: ${sound}.mp3`);
+                };
+            }
+        }
+
+        function playSound(soundType) {
+            if (!soundEnabled || !sounds[soundType]) return;
+            
+            try {
+                sounds[soundType].currentTime = 0;
+                sounds[soundType].play().catch(e => {
+                    console.warn(`Could not play sound ${soundType}:`, e);
+                });
+            } catch (e) {
+                console.warn(`Error playing sound ${soundType}:`, e);
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = document.getElementById('soundToggle').checked;
+            if (soundEnabled) {
+                playSound('move'); // Feedback sound
+            }
+        }
 
         async function newGame() {
             try {
@@ -398,6 +465,7 @@
                 sessionId = data.sessionId;
                 gameState = data.state;
                 renderGame();
+                playSound('move'); // Play start sound
             } catch (error) { console.error(error); }
         }
 
@@ -415,8 +483,19 @@
                     gameState = data.state;
                     selectedSquare = null;
                     renderGame();
+
+                    // Play sound based on backend response soundType (from second file logic)
+                    if (data.state.soundType) {
+                        playSound(data.state.soundType);
+                    } else {
+                        // Fallback if backend doesn't send soundType but move was successful
+                        playSound('move');
+                    }
                 } else {
-                    alert('Invalid move: ' + data.error);
+                    playSound('illegal'); // Play error sound
+                    // Optional: You can keep the alert if you want visual feedback too
+                    // alert('Invalid move: ' + data.error); 
+                    console.log('Invalid move: ' + data.error);
                 }
             } catch (error) { console.error(error); }
         }
@@ -433,6 +512,7 @@
                     gameState = data.state;
                     selectedSquare = null;
                     renderGame();
+                    playSound('move'); // Sound for undo
                 }
             } catch (error) { console.error(error); }
         }
@@ -596,14 +676,7 @@
         }
 
         function renderHistory() {
-            const list = document.getElementById('historyList');
-            // This is a simple history list. 
-            // In a real app, you'd parse PGN or store moves more structured in Go.
-            // For now, we don't have the full move history list passed from backend cleanly
-            // other than the 'LastMove'. 
-            // If you want full history, you'd need to update the Go struct to return []string History.
-            // For now, I'll leave this empty to keep the UI clean, or you can update the backend.
-            list.innerHTML = '<div style="color:#555; text-align:center; padding-top:20px;">History logs...</div>';
+            // History placeholder
         }
 
         function indexToCoord(index) {
@@ -618,6 +691,8 @@
             return rank * 8 + file;
         }
 
+        // Initialize sounds and game
+        loadSounds();
         newGame();
     </script>
 </body>
