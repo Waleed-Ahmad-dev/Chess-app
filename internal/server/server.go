@@ -10,7 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"io"
+
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
+	"github.com/Waleed-Ahmad-dev/Chess-app/internal/sound"
 )
 
 //go:embed assets
@@ -20,6 +23,7 @@ var (
 	sessions     = make(map[string]*game.Game)
 	sessionTimes = make(map[string]time.Time)
 	mu           sync.RWMutex
+	soundManager = sound.NewWebSoundManager()
 )
 
 type GameStateResponse struct {
@@ -32,6 +36,7 @@ type GameStateResponse struct {
 	IsStalemate    bool     `json:"isStalemate"`
 	LastMove       string   `json:"lastMove,omitempty"`
 	CapturedPieces []string `json:"capturedPieces"`
+	SoundType      string   `json:"soundType,omitempty"` // Added for sound feedback
 }
 
 type MoveRequest struct {
@@ -45,6 +50,17 @@ type MoveResponse struct {
 	State   GameStateResponse `json:"state"`
 }
 
+// SoundData provides sound URLs to frontend
+type SoundData struct {
+	Move      string `json:"move"`
+	Capture   string `json:"capture"`
+	Castle    string `json:"castle"`
+	Check     string `json:"check"`
+	Checkmate string `json:"checkmate"`
+	Illegal   string `json:"illegal"`
+	Promote   string `json:"promote"`
+}
+
 func StartServer() {
 	// Start cleanup goroutine
 	go cleanupSessions()
@@ -54,20 +70,38 @@ func StartServer() {
 	http.HandleFunc("/api/game-state", handleGameState)
 	http.HandleFunc("/api/make-move", handleMakeMove)
 	http.HandleFunc("/api/undo-move", handleUndoMove)
+	http.HandleFunc("/api/sounds", handleGetSounds) // New endpoint for sounds
 
 	log.Println("Server starting on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 func serveHome(w http.ResponseWriter, r *http.Request) {
-	// Use fs.Sub to route the "assets" folder to the root "/"
-	// This ensures http.FileServer finds "index.html" at the root
 	assets, err := fs.Sub(assetsFS, "assets")
 	if err != nil {
 		log.Printf("Failed to sub-fs assets: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+
+	// Check if requesting an MP3 file
+	if r.URL.Path == "/move.mp3" || r.URL.Path == "/capture.mp3" ||
+		r.URL.Path == "/castle.mp3" || r.URL.Path == "/check.mp3" ||
+		r.URL.Path == "/checkmate.mp3" || r.URL.Path == "/illegal.mp3" ||
+		r.URL.Path == "/promote.mp3" {
+		// Serve the specific sound file
+		file, err := assets.Open(r.URL.Path[1:]) // Remove leading slash
+		if err != nil {
+			http.Error(w, "Sound not found", http.StatusNotFound)
+			return
+		}
+		defer file.Close()
+
+		w.Header().Set("Content-Type", "audio/mpeg")
+		http.ServeContent(w, r, r.URL.Path, time.Now(), file.(io.ReadSeeker))
+		return
+	}
+
 	http.FileServer(http.FS(assets)).ServeHTTP(w, r)
 }
 
@@ -87,7 +121,7 @@ func handleNewGame(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]interface{}{
 		"sessionId": sessionID,
-		"state":     getGameState(g),
+		"state":     getGameState(g, ""),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -110,8 +144,10 @@ func handleGameState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	soundType := r.URL.Query().Get("soundType")
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(getGameState(g))
+	json.NewEncoder(w).Encode(getGameState(g, soundType))
 }
 
 func handleMakeMove(w http.ResponseWriter, r *http.Request) {
@@ -146,12 +182,28 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(MoveResponse{
 			Success: false,
 			Error:   err.Error(),
-			State:   getGameState(g),
+			State:   getGameState(g, "illegal"),
 		})
 		return
 	}
 
-	g.MakeMove(move)
+	result := g.MakeMove(move)
+
+	// Determine sound type based on move result
+	soundType := ""
+	if result.WasCheckmate {
+		soundType = "checkmate"
+	} else if result.WasCheck {
+		soundType = "check"
+	} else if result.WasCastle {
+		soundType = "castle"
+	} else if result.WasPromotion {
+		soundType = "promote"
+	} else if result.WasCapture {
+		soundType = "capture"
+	} else {
+		soundType = "move"
+	}
 
 	mu.Lock()
 	sessionTimes[req.SessionID] = time.Now()
@@ -160,7 +212,7 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
 		Success: true,
-		State:   getGameState(g),
+		State:   getGameState(g, soundType),
 	})
 }
 
@@ -200,11 +252,27 @@ func handleUndoMove(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
 		Success: true,
-		State:   getGameState(g),
+		State:   getGameState(g, ""),
 	})
 }
 
-func getGameState(g *game.Game) GameStateResponse {
+// New endpoint to get sound URLs
+func handleGetSounds(w http.ResponseWriter, r *http.Request) {
+	sounds := SoundData{
+		Move:      "/move.mp3",
+		Capture:   "/capture.mp3",
+		Castle:    "/castle.mp3",
+		Check:     "/check.mp3",
+		Checkmate: "/checkmate.mp3",
+		Illegal:   "/illegal.mp3",
+		Promote:   "/promote.mp3",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sounds)
+}
+
+func getGameState(g *game.Game, soundType string) GameStateResponse {
 	board := make([]string, 64)
 	for i := 0; i < 64; i++ {
 		board[i] = g.Board[i].String()
@@ -250,13 +318,13 @@ func getGameState(g *game.Game) GameStateResponse {
 		IsStalemate:    isStalemate,
 		LastMove:       lastMove,
 		CapturedPieces: capturedPieces,
+		SoundType:      soundType,
 	}
 }
 
 func getCapturedPieces(g *game.Game) []string {
 	captured := []string{}
 
-	// Count pieces on board
 	whitePieces := map[game.PieceType]int{
 		game.Pawn: 8, game.Knight: 2, game.Bishop: 2,
 		game.Rook: 2, game.Queen: 1, game.King: 1,
@@ -277,7 +345,6 @@ func getCapturedPieces(g *game.Game) []string {
 		}
 	}
 
-	// Add captured pieces
 	for pType, count := range whitePieces {
 		for i := 0; i < count; i++ {
 			captured = append(captured, "w"+string(game.Piece{Type: pType, Color: game.White}.String()))
