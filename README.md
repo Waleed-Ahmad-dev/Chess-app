@@ -32,6 +32,7 @@ A high-performance, dual-interface Chess application engineered in Go. Designed 
 - **Game State Detection**: Instant checking for Check, Checkmate, and Stalemate conditions.
 - **Session Management**: The web server supports multiple concurrent game sessions, isolated by unique Session IDs.
 - **RESTful API**: Clean JSON API for integration with other frontends or engines.
+- **Audio Feedback**: Immersive sound effects for moves, captures, castling, checks, and game over states.
 - **Cross-Platform**: Runs natively on Linux, Windows, and macOS.
 
 ---
@@ -102,7 +103,7 @@ Creates a new game session.
 **GET** `/api/game-state?sessionId=<ID>`
 Retrieves the current board state.
 
-- **Response**: JSON object containing board representation, legal moves, and turn info.
+- **Response**: JSON object containing board representation, legal moves, turn info, and `soundType`.
 
 ### Make Move
 
@@ -110,7 +111,22 @@ Retrieves the current board state.
 Execute a move on the board.
 
 - **Body**: `{"sessionId": "...", "move": "e2e4"}`
-- **Response**: Updated game state or error message.
+- **Response**: Updated game state, including `soundType` for frontend audio triggers.
+
+### Undo Move
+
+**POST** `/api/undo-move`
+Reverts the last move made in the session.
+
+- **Body**: `{"sessionId": "..."}`
+- **Response**: Updated game state after undo.
+
+### Get Sounds
+
+**GET** `/api/sounds`
+Returns the URLs for all game sound assets.
+
+- **Response**: JSON object mapping event types to sound file URLs.
 
 ---
 
@@ -129,7 +145,11 @@ Chess-app/
 │   │   └── state.go      # Game state management
 │   └── server/
 │       ├── server.go     # HTTP Server & API handlers
-│       └── html.go       # Embedded frontend assets
+│       ├── html.go       # Embedded frontend assets
+│       └── assets/       # Static assets (MP3s)
+│   ├── sound/
+│   │   ├── sound.go      # Native audio playback
+│   │   └── web_sound.go  # Web audio management
 ├── go.mod                # Module definition
 ├── LICENSE               # MIT License
 └── README.md             # Project documentation
