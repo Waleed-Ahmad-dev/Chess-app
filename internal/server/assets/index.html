@@ -3,17 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess - Monochrome Glass</title>
+    <title>Chess - Multiplayer</title>
     <style>
         :root {
             --bg-dark: #000000;
             --bg-light: #1a1a1a;
             --glass-surface: rgba(255, 255, 255, 0.03);
             --glass-border: rgba(255, 255, 255, 0.1);
-            --glass-highlight: rgba(255, 255, 255, 0.08);
             --text-main: #ffffff;
             --text-muted: #888888;
-            
             --sq-light: rgba(255, 255, 255, 0.1);
             --sq-dark: rgba(0, 0, 0, 0.3);
             --sq-hover: rgba(255, 255, 255, 0.2);
@@ -21,12 +19,7 @@
             --sq-last-move: rgba(255, 255, 255, 0.15);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', 'Segoe UI', sans-serif;
             background: radial-gradient(circle at 50% 50%, #2a2a2a 0%, #000000 120%);
@@ -35,7 +28,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            overflow: hidden; /* Prevent scroll on full screen apps */
+            overflow: hidden;
         }
 
         .container {
@@ -48,23 +41,15 @@
             justify-content: center;
         }
 
-        /* --- Glassmorphism Panels --- */
         .glass-panel {
             background: var(--glass-surface);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--glass-border);
             border-radius: 24px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         }
 
-        .game-area {
-            padding: 40px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
+        .game-area { padding: 40px; display: flex; justify-content: center; align-items: center; }
         .sidebar {
             padding: 30px;
             min-width: 350px;
@@ -75,7 +60,6 @@
             gap: 20px;
         }
 
-        /* --- Chess Board --- */
         .board {
             display: grid;
             grid-template-columns: repeat(8, 75px);
@@ -84,309 +68,93 @@
             border-radius: 4px;
             overflow: hidden;
             box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-            transition: transform 0.5s ease; /* Smooth rotation if you wanted 3D flip, but we rebuild grid */
         }
 
         .square {
-            width: 75px;
-            height: 75px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 52px;
-            cursor: pointer;
+            width: 75px; height: 75px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 52px; cursor: pointer;
             position: relative;
-            transition: background-color 0.2s ease;
             user-select: none;
         }
-
         .square.light { background-color: var(--sq-light); }
         .square.dark { background-color: var(--sq-dark); }
-
-        .square:hover {
-            background-color: var(--sq-hover);
-        }
-
-        /* --- Drag & Drop Styles --- */
-        .square.dragging {
-            opacity: 0.4;
-            background-color: var(--sq-selected);
-        }
-
-        .square.drag-over {
-            background-color: rgba(255, 255, 255, 0.4) !important;
-            box-shadow: inset 0 0 20px rgba(255,255,255,0.5);
-        }
-
-        .square.selected {
-            background-color: var(--sq-selected) !important;
-            box-shadow: inset 0 0 15px rgba(255,255,255,0.1);
-        }
-
-        .square.last-move {
-            background-color: var(--sq-last-move) !important;
-        }
-
-        /* --- Pieces Styling --- */
-        /* White pieces: Pure white with a subtle shadow */
-        .piece-white {
-            color: #ffffff;
-            text-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
-        }
-
-        /* Black pieces: Dark grey with a white outline/glow to be visible on black */
-        .piece-black {
-            color: #1a1a1a;
-            text-shadow: 0 0 2px rgba(255,255,255,0.4); 
-        }
-
-        /* --- Legal Move Indicators --- */
+        .square:hover { background-color: var(--sq-hover); }
+        .square.selected { background-color: var(--sq-selected) !important; }
+        .square.last-move { background-color: var(--sq-last-move) !important; }
+        
         .square.legal-move::after {
-            content: '';
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            background-color: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            pointer-events: none;
-            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            content: ''; position: absolute; width: 14px; height: 14px;
+            background-color: rgba(255, 255, 255, 0.2); border-radius: 50%; pointer-events: none;
         }
-
-        .square.legal-move:hover::after {
-            background-color: rgba(255, 255, 255, 0.5);
-        }
-
+        .square.legal-move:hover::after { background-color: rgba(255, 255, 255, 0.5); }
         .square.legal-move.has-piece::after {
-            width: 100%;
-            height: 100%;
-            border-radius: 0;
-            background: none;
+            width: 100%; height: 100%; border-radius: 0; background: none;
             box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.2);
         }
 
-        /* --- Typography & UI Elements --- */
-        h2, h3 {
-            font-weight: 300;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            font-size: 14px;
-            color: var(--text-muted);
-            margin-bottom: 10px;
-            border-bottom: 1px solid var(--glass-border);
-            padding-bottom: 5px;
-        }
+        .piece-white { color: #ffffff; text-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .piece-black { color: #1a1a1a; text-shadow: 0 0 2px rgba(255,255,255,0.4); }
 
-        .status-header {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            letter-spacing: -0.5px;
-            color: var(--text-main);
-        }
+        h2, h3 { color: var(--text-muted); font-size: 14px; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid var(--glass-border); padding-bottom: 5px; }
+        
+        .status-header { font-size: 24px; font-weight: 600; margin-bottom: 10px; color: var(--text-main); }
+        .room-display { font-size: 14px; color: var(--text-muted); margin-bottom: 15px; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 6px; display: inline-block; font-family: monospace; letter-spacing: 1px; }
 
         .turn-indicator {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 15px;
-            background: rgba(255,255,255,0.02);
-            border-radius: 12px;
-            border: 1px solid var(--glass-border);
+            display: flex; align-items: center; gap: 12px; padding: 15px;
+            background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px solid var(--glass-border);
         }
-
-        .turn-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-        }
+        .turn-dot { width: 12px; height: 12px; border-radius: 50%; }
         .turn-dot.white { background: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
         .turn-dot.black { background: #000; border: 1px solid #555; }
 
-        /* --- Alerts (Check/Mate) --- */
-        .alert {
-            margin-top: 15px;
-            padding: 12px;
-            border-radius: 8px;
-            font-weight: 600;
-            text-align: center;
-            font-size: 14px;
-            letter-spacing: 1px;
-            border: 1px solid currentColor;
-            background: rgba(0,0,0,0.3);
-        }
-        .alert.check { color: #ffffff; border-color: #ffffff; }
-        .alert.checkmate { color: #ffffff; background: #ffffff; color: #000; }
-        .alert.stalemate { color: #aaaaaa; border-color: #aaaaaa; }
+        .captured-list { display: flex; flex-wrap: wrap; gap: 5px; min-height: 30px; margin-bottom: 20px; }
+        .captured-piece { font-size: 20px; opacity: 0.6; color: var(--text-main); }
 
-        /* --- Captured Pieces --- */
-        .captured-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-            min-height: 30px;
-            margin-bottom: 20px;
-        }
-        .captured-piece {
-            font-size: 20px;
-            opacity: 0.6;
-            color: var(--text-main);
-        }
-
-        /* --- Toggles --- */
-        .settings-container {
-            margin-top: auto;
-            margin-bottom: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .toggle-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text-muted);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-        .toggle-row:hover { color: var(--text-main); }
-        .toggle-row input { accent-color: #fff; cursor: pointer; }
-
-        /* --- Buttons --- */
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; }
         button {
-            padding: 15px;
-            background: transparent;
-            border: 1px solid var(--glass-border);
-            color: var(--text-main);
-            font-family: inherit;
-            font-weight: 500;
-            text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 1px;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.2s;
+            padding: 15px; background: transparent; border: 1px solid var(--glass-border);
+            color: var(--text-main); text-transform: uppercase; font-size: 12px;
+            cursor: pointer; border-radius: 8px; transition: all 0.2s;
+        }
+        button:hover { background: rgba(255, 255, 255, 0.1); }
+        button.btn-primary { background: rgba(255, 255, 255, 0.9); color: black; border: none; }
+        button.btn-primary:hover { background: #ffffff; box-shadow: 0 0 15px rgba(255,255,255,0.3); }
+
+        /* Inputs */
+        input[type="text"] {
+            background: rgba(0,0,0,0.5); border: 1px solid #555; color: white;
+            padding: 10px; border-radius: 8px; width: 100%; text-align: center;
+            font-size: 16px; letter-spacing: 2px; text-transform: uppercase;
+            margin-bottom: 15px;
         }
 
-        button:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        button.btn-primary {
-            background: rgba(255, 255, 255, 0.9);
-            color: black;
-            border: none;
-        }
-        button.btn-primary:hover {
-            background: #ffffff;
-            box-shadow: 0 0 15px rgba(255,255,255,0.3);
-        }
-
-        /* --- History --- */
-        .history-list {
-            flex: 1;
-            overflow-y: auto;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 12px;
-            padding: 10px;
-            border: 1px solid var(--glass-border);
-            font-family: 'Roboto Mono', monospace;
-            font-size: 13px;
-        }
-
-        /* --- Scrollbar --- */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
-
-        /* --- Modals (Promotion & Start Game) --- */
-        .overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(5px);
-            z-index: 999;
-            display: none;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .overlay.active { display: block; opacity: 1; }
-
+        /* Modals */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; display: none; }
+        .overlay.active { display: block; }
         .modal {
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%) scale(0.9);
-            background: #111;
-            border: 1px solid #333;
-            padding: 30px;
-            border-radius: 20px;
-            z-index: 1000;
-            display: none;
-            transition: transform 0.3s;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-            text-align: center;
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #111; border: 1px solid #333; padding: 30px;
+            border-radius: 20px; z-index: 1000; display: none; text-align: center;
+            width: 300px;
         }
-        .modal.active { display: block; transform: translate(-50%, -50%) scale(1); }
+        .modal.active { display: block; }
 
-        .modal h3 { border: none; font-size: 18px; color: #fff; margin-bottom: 20px; }
-
-        .promotion-pieces {
-            display: flex;
-            gap: 20px;
-            margin-top: 20px;
-            justify-content: center;
-        }
+        .promotion-pieces { display: flex; gap: 20px; justify-content: center; margin-top: 20px; }
         .promotion-piece {
-            width: 70px; height: 70px;
+            width: 60px; height: 60px; font-size: 35px; background: #222;
+            border: 1px solid #333; border-radius: 12px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            font-size: 40px;
-            background: #222;
-            border-radius: 12px;
-            cursor: pointer;
-            border: 1px solid #333;
-            color: #fff;
-            transition: all 0.2s;
         }
         .promotion-piece:hover { background: #333; border-color: #fff; }
 
-        .side-selection {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-        }
-        .side-btn {
-            width: 120px;
-            height: 120px;
-            border: 1px solid #333;
-            background: #222;
-            border-radius: 16px;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: all 0.2s;
-        }
-        .side-btn:hover { background: #333; border-color: #555; transform: translateY(-2px); }
-        .side-btn span { font-size: 40px; }
-        .side-btn label { cursor: pointer; color: #aaa; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .menu-options { display: flex; flex-direction: column; gap: 15px; }
 
         @media (max-width: 1000px) {
             .container { flex-direction: column; height: auto; padding: 20px; }
             .sidebar { width: 100%; max-width: none; }
-            .board { grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: 100vw; max-width: 90vw; height: 90vw; max-height: 90vw; }
+            .board { grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: 90vw; height: 90vw; }
             .square { width: auto; height: auto; font-size: 8vw; }
         }
     </style>
@@ -400,11 +168,11 @@
         <div class="glass-panel sidebar">
             <div>
                 <div class="status-header">Chess</div>
+                <div class="room-display" id="roomDisplay">Not Connected</div>
                 <div class="turn-indicator">
                     <div class="turn-dot white" id="turnDot"></div>
-                    <span id="turnText">White's Turn</span>
+                    <span id="turnText">Waiting...</span>
                 </div>
-                <div id="alerts"></div>
             </div>
 
             <div>
@@ -412,24 +180,14 @@
                 <div class="captured-list" id="capturedList"></div>
             </div>
 
-            <div class="history-list" id="historyList">
-                <div style="color:#555; text-align:center; padding-top:20px;">History logs...</div>
-            </div>
-
-            <div class="settings-container">
-                <label class="toggle-row">
-                    <input type="checkbox" id="soundToggle" checked onchange="toggleSound()">
-                    <span>Enable Sounds</span>
-                </label>
-                <label class="toggle-row">
-                    <input type="checkbox" id="autoFlipToggle" checked onchange="toggleAutoFlip()">
-                    <span>Auto-Flip Board</span>
-                </label>
-            </div>
-
             <div class="controls">
-                <button class="btn-secondary" onclick="undoMove()">Undo</button>
-                <button class="btn-primary" onclick="showStartScreen()">New Game</button>
+                <button onclick="undoMove()">Undo</button>
+                <button class="btn-primary" onclick="showStartScreen()">Lobby</button>
+            </div>
+            
+            <div style="margin-top: 10px; font-size: 12px; color: #555; text-align: center;">
+                <label><input type="checkbox" id="soundToggle" checked> Sounds</label>
+                <label style="margin-left: 10px;"><input type="checkbox" id="autoFlipToggle" checked onchange="renderBoard()"> Auto-Flip</label>
             </div>
         </div>
     </div>
@@ -437,461 +195,239 @@
     <div class="overlay" id="overlay"></div>
 
     <div class="modal" id="promotionDialog">
-        <h3>Promote Pawn</h3>
+        <h3>Promote</h3>
         <div class="promotion-pieces" id="promotionPieces"></div>
     </div>
 
     <div class="modal" id="startDialog">
-        <h3>Choose Your Side</h3>
-        <div class="side-selection">
-            <div class="side-btn" onclick="startGame('White')">
-                <span>♔</span>
-                <label>White</label>
-            </div>
-            <div class="side-btn" onclick="startGame('Black')">
-                <span>♚</span>
-                <label>Black</label>
-            </div>
+        <h3 style="margin-bottom: 20px; color: white;">Multiplayer Chess</h3>
+        <div class="menu-options">
+            <button class="btn-primary" onclick="createRoom()">Create New Room</button>
+            <div style="border-top: 1px solid #333; margin: 5px 0;"></div>
+            <input type="text" id="joinCodeInput" placeholder="ROOM CODE" maxlength="4">
+            <button onclick="joinRoom()">Join Room</button>
         </div>
     </div>
 
     <script>
-        let sessionId = null;
+        let roomId = null;
         let gameState = null;
         let selectedSquare = null;
         let pendingPromotion = null;
-        let dragSourceIndex = null;
-        let socket = null; // WebSocket variable
-        
-        // --- Settings ---
-        let soundEnabled = true;
-        let autoFlip = true;
-        let playerSide = 'White'; // 'White' or 'Black' (Preferred side)
-
-        // Browser Autoplay Policy
-        let userInteracted = false;
-        document.addEventListener('click', () => {
-            userInteracted = true;
-        }, { capture: true, once: true });
+        let socket = null;
+        let playerSide = null; // 'White' or 'Black', assigned by server
 
         const pieceUnicode = {
             'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
-            'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
-            '.': ''
+            'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚', '.': ''
         };
 
-        // --- Audio System ---
         let sounds = {};
         async function loadSounds() {
-            const soundFiles = ['move', 'capture', 'castle', 'check', 'checkmate', 'illegal', 'promote'];
-            for (const sound of soundFiles) {
-                sounds[sound] = new Audio(`/${sound}.mp3`);
-                sounds[sound].preload = 'auto'; 
-                sounds[sound].onerror = () => console.warn(`Could not load sound: ${sound}.mp3`);
+            const files = ['move', 'capture', 'castle', 'check', 'checkmate', 'illegal', 'promote'];
+            for (const f of files) {
+                sounds[f] = new Audio(`/${f}.mp3`);
+                sounds[f].preload = 'auto';
             }
         }
-
-        function playSound(soundType) {
-            if (!soundEnabled || !sounds[soundType] || !userInteracted) return;
-            try {
-                const audioClone = sounds[soundType].cloneNode();
-                audioClone.play().catch(e => console.warn(e));
-            } catch (e) { console.warn(e); }
-        }
-
-        function toggleSound() {
-            soundEnabled = document.getElementById('soundToggle').checked;
-            if (soundEnabled && userInteracted) playSound('move');
-        }
-
-        function toggleAutoFlip() {
-            autoFlip = document.getElementById('autoFlipToggle').checked;
-            renderBoard(); // Re-render immediately to reflect change
+        function playSound(type) {
+            if (document.getElementById('soundToggle').checked && sounds[type]) {
+                sounds[type].cloneNode().play().catch(() => {});
+            }
         }
 
         // --- WebSocket ---
-        function connectWebSocket(sid) {
-            if (socket) {
-                socket.close();
-            }
-
-            // Determine protocol (ws or wss) based on current page
+        function connectWebSocket(rid) {
+            if (socket) socket.close();
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws?sessionId=${sid}`;
+            socket = new WebSocket(`${protocol}//${window.location.host}/ws?room=${rid}`);
 
-            socket = new WebSocket(wsUrl);
-
-            socket.onopen = () => {
-                console.log("WebSocket connected");
-            };
-
+            socket.onopen = () => console.log("Connected to Room " + rid);
+            
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log("WebSocket Update Recieved", data);
                 
-                // Update state and render
-                gameState = data;
-                selectedSquare = null;
-                renderGame();
-
-                // Trigger sound based on server directive if sound type provided
-                if (data.soundType) {
-                    playSound(data.soundType);
+                // Handle Initial Handshake
+                if (data.type === 'init') {
+                    playerSide = data.color;
+                    roomId = data.roomId;
+                    gameState = data.state;
+                    document.getElementById('roomDisplay').textContent = `Room: ${roomId} | You: ${playerSide}`;
+                    renderGame();
+                } else {
+                    // Standard Update
+                    gameState = data;
+                    selectedSquare = null;
+                    renderGame();
+                    if (data.soundType) playSound(data.soundType);
                 }
             };
-
-            socket.onclose = () => {
-                console.log("WebSocket disconnected");
-            };
-
-            socket.onerror = (error) => {
-                console.error("WebSocket error:", error);
-            };
+            
+            socket.onerror = (e) => console.log("WS Error", e);
         }
 
-        // --- Game Management ---
-        function showStartScreen() {
-            document.getElementById('startDialog').classList.add('active');
-            document.getElementById('overlay').classList.add('active');
-        }
-
-        function startGame(side) {
-            playerSide = side;
-            document.getElementById('startDialog').classList.remove('active');
-            document.getElementById('overlay').classList.remove('active');
-            newGame();
-        }
-
-        async function newGame() {
+        // --- API Calls ---
+        async function createRoom() {
             try {
-                const response = await fetch('/api/new-game', { method: 'POST' });
-                const data = await response.json();
-                sessionId = data.sessionId;
+                const res = await fetch('/api/create-room', { method: 'POST' });
+                const data = await res.json();
+                roomId = data.roomId;
                 gameState = data.state;
-                
-                // Initialize WebSocket for this session
-                connectWebSocket(sessionId);
+                closeModal();
+                connectWebSocket(roomId); // Connect to assign color (White)
+            } catch (e) { console.error(e); }
+        }
 
-                selectedSquare = null;
-                renderGame();
-                playSound('move');
-            } catch (error) { console.error(error); }
+        function joinRoom() {
+            const code = document.getElementById('joinCodeInput').value.toUpperCase();
+            if (code.length !== 4) return alert("Enter a 4-letter code");
+            roomId = code;
+            closeModal();
+            connectWebSocket(code); // Connect to assign color (Black usually)
         }
 
         async function makeMove(from, to, promotion = '') {
-            try {
-                // Optimistic Sound (immediate feedback for user who clicked)
-                let predictedSound = 'move';
-                const pieceAtTarget = gameState.board[to];
-                const movingPiece = gameState.board[from];
-                const isCapture = pieceAtTarget !== '.';
-                const isKing = movingPiece.toLowerCase() === 'k';
-                const moveDist = Math.abs(from - to);
-                
-                if (promotion) predictedSound = 'promote';
-                else if (isKing && moveDist === 2) predictedSound = 'castle';
-                else if (isCapture) predictedSound = 'capture';
-                
-                // Only play "predicted" sound if we made the move. 
-                // The server will broadcast sound to everyone else.
-                playSound(predictedSound);
+            // Client-side turn check
+            if (gameState.turn !== playerSide) return;
 
-                const move = indexToCoord(from) + indexToCoord(to) + promotion;
-                const response = await fetch('/api/make-move', {
+            const move = indexToCoord(from) + indexToCoord(to) + promotion;
+            try {
+                const res = await fetch('/api/make-move', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId, move })
+                    body: JSON.stringify({ roomId, move })
                 });
-                const data = await response.json();
-                
+                const data = await res.json();
                 if (data.success) {
-                    // Update is also handled via WebSocket, but handling here ensures atomicity for the mover
-                    gameState = data.state;
-                    selectedSquare = null;
-                    renderGame();
-
-                    // Check server sound against predicted sound (e.g., predicted move but was check)
-                    const serverSound = data.state.soundType;
-                    if (serverSound === 'check' || serverSound === 'checkmate') playSound(serverSound);
+                    // Update happens via WebSocket usually, but we can optimistically update
                 } else {
                     playSound('illegal');
-                    console.log('Invalid move: ' + data.error);
                 }
-            } catch (error) { console.error(error); }
+            } catch (e) { console.error(e); }
         }
 
         async function undoMove() {
-             try {
-                const response = await fetch('/api/undo-move', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    gameState = data.state;
-                    selectedSquare = null;
-                    renderGame();
-                    playSound('move');
-                }
-            } catch (error) { console.error(error); }
+            await fetch('/api/undo-move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId })
+            });
         }
 
         // --- Rendering ---
         function renderGame() {
             if (!gameState) return;
             renderBoard();
-            renderStatus();
-            renderCapturedPieces();
+            
+            // Status
+            document.getElementById('turnText').textContent = gameState.turn + "'s Turn";
+            document.getElementById('turnDot').className = 'turn-dot ' + gameState.turn.toLowerCase();
+
+            // Captured
+            const list = document.getElementById('capturedList');
+            list.innerHTML = '';
+            gameState.capturedPieces.forEach(p => {
+                const s = document.createElement('span');
+                s.className = 'captured-piece';
+                s.textContent = pieceUnicode[p.substring(1)];
+                list.appendChild(s);
+            });
         }
 
         function renderBoard() {
             const board = document.getElementById('board');
             board.innerHTML = '';
+            
+            // Auto-flip based on assigned side
+            const autoFlip = document.getElementById('autoFlipToggle').checked;
+            const isFlipped = autoFlip ? (playerSide === 'Black') : false;
 
-            // Determine Orientation
-            const orientation = autoFlip ? gameState.turn : playerSide;
-            const isFlipped = (orientation === 'Black');
-
-            const startRank = isFlipped ? 0 : 7;
-            const endRank = isFlipped ? 7 : 0;
-            const stepRank = isFlipped ? 1 : -1;
-
-            const startFile = isFlipped ? 7 : 0;
-            const endFile = isFlipped ? 0 : 7;
-            const stepFile = isFlipped ? -1 : 1;
-
-            for (let rank = startRank; rank !== endRank + stepRank; rank += stepRank) {
-                for (let file = startFile; file !== endFile + stepFile; file += stepFile) {
+            for (let rank = isFlipped ? 0 : 7; isFlipped ? rank < 8 : rank >= 0; isFlipped ? rank++ : rank--) {
+                for (let file = isFlipped ? 7 : 0; isFlipped ? file >= 0 : file < 8; isFlipped ? file-- : file++) {
+                    const idx = rank * 8 + file;
+                    const sq = document.createElement('div');
+                    sq.className = 'square ' + ((rank + file) % 2 !== 0 ? 'light' : 'dark');
                     
-                    const index = rank * 8 + file;
+                    const piece = gameState.board[idx];
+                    sq.textContent = pieceUnicode[piece];
                     
-                    const square = document.createElement('div');
-                    square.className = 'square';
-                    square.className += (rank + file) % 2 !== 0 ? ' light' : ' dark';
-                    
-                    const piece = gameState.board[index];
-                    square.textContent = pieceUnicode[piece] || '';
-
                     if (piece !== '.') {
-                        square.classList.add('has-piece');
-                        if (piece === piece.toUpperCase()) square.classList.add('piece-white');
-                        else square.classList.add('piece-black');
+                        sq.classList.add('has-piece');
+                        sq.classList.add(piece === piece.toUpperCase() ? 'piece-white' : 'piece-black');
                     }
 
-                    // Highlights
-                    if (selectedSquare === index) square.classList.add('selected');
-                    if (gameState.lastMove) {
-                        const from = coordToIndex(gameState.lastMove.substring(0, 2));
-                        const to = coordToIndex(gameState.lastMove.substring(2, 4));
-                        if (index === from || index === to) square.classList.add('last-move');
-                    }
-
+                    if (selectedSquare === idx) sq.classList.add('selected');
+                    
                     // Legal Moves
                     if (selectedSquare !== null) {
-                        const moveStr = indexToCoord(selectedSquare) + indexToCoord(index);
-                        if (gameState.legalMoves.some(m => m.startsWith(moveStr))) {
-                            square.classList.add('legal-move');
-                        }
+                        const mStr = indexToCoord(selectedSquare) + indexToCoord(idx);
+                        if (gameState.legalMoves.some(m => m.startsWith(mStr))) sq.classList.add('legal-move');
                     }
 
-                    // Drag & Drop
-                    const isOwnPiece = (gameState.turn === 'White' && piece === piece.toUpperCase() && piece !== '.') ||
-                                       (gameState.turn === 'Black' && piece === piece.toLowerCase() && piece !== '.');
-                    
-                    if (isOwnPiece && !gameState.gameOver) {
-                        square.draggable = true;
-                        square.addEventListener('dragstart', (e) => handleDragStart(e, index));
-                        square.addEventListener('dragend', handleDragEnd);
-                    }
-                    square.addEventListener('dragover', handleDragOver);
-                    square.addEventListener('dragenter', handleDragEnter);
-                    square.addEventListener('dragleave', handleDragLeave);
-                    square.addEventListener('drop', (e) => handleDrop(e, index));
-                    square.onclick = () => handleSquareClick(index);
-
-                    board.appendChild(square);
+                    sq.onclick = () => handleSquareClick(idx);
+                    board.appendChild(sq);
                 }
             }
         }
 
-        // --- Drag & Drop ---
-        function handleDragStart(e, index) {
-            if (gameState.gameOver) { e.preventDefault(); return; }
-            dragSourceIndex = index;
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', index);
-            setTimeout(() => e.target.classList.add('dragging'), 0);
-        }
+        function handleSquareClick(idx) {
+            // Prevent interaction if not your turn or game over
+            if (gameState.gameOver || playerSide !== gameState.turn) return;
 
-        function handleDragEnd(e) {
-            e.target.classList.remove('dragging');
-            dragSourceIndex = null;
-            document.querySelectorAll('.square').forEach(sq => sq.classList.remove('drag-over'));
-        }
-
-        function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
-        
-        function handleDragEnter(e) {
-            e.preventDefault();
-            if (e.target.classList.contains('square')) e.target.classList.add('drag-over');
-        }
-
-        function handleDragLeave(e) {
-            if (e.target.classList.contains('square')) e.target.classList.remove('drag-over');
-        }
-
-        function handleDrop(e, toIndex) {
-            e.preventDefault(); e.stopPropagation();
-            if (e.target.classList.contains('square')) e.target.classList.remove('drag-over');
-            
-            const fromIndex = dragSourceIndex;
-            if (fromIndex === null || fromIndex === toIndex) return;
-
-            const piece = gameState.board[fromIndex];
-            const targetPiece = gameState.board[toIndex];
-            
-            // Castling check via drag
-            const isKing = piece.toLowerCase() === 'k';
-            const isRook = targetPiece.toLowerCase() === 'r';
-            const sameColor = (piece === piece.toUpperCase()) === (targetPiece === targetPiece.toUpperCase());
-            
-            if (isKing && isRook && sameColor) {
-                makeMove(fromIndex, toIndex);
-                return;
-            }
-
-            const moveStr = indexToCoord(fromIndex) + indexToCoord(toIndex);
-            const possibleMoves = gameState.legalMoves.filter(m => m.startsWith(moveStr));
-
-            if (possibleMoves.length > 0) {
-                if (possibleMoves.length === 1) makeMove(fromIndex, toIndex);
-                else {
-                    pendingPromotion = { from: fromIndex, to: toIndex };
-                    showPromotionDialog();
-                }
-            } else {
-                playSound('illegal');
-            }
-        }
-
-        function handleSquareClick(index) {
-            if (gameState.gameOver) return;
-            const piece = gameState.board[index];
-            const isOwnPiece = (gameState.turn === 'White' && piece === piece.toUpperCase() && piece !== '.') ||
-                               (gameState.turn === 'Black' && piece === piece.toLowerCase() && piece !== '.');
+            const piece = gameState.board[idx];
+            const isOwn = (playerSide === 'White' && piece === piece.toUpperCase() && piece !== '.') ||
+                          (playerSide === 'Black' && piece === piece.toLowerCase() && piece !== '.');
 
             if (selectedSquare === null) {
-                if (isOwnPiece) {
-                    selectedSquare = index;
-                    renderBoard();
-                }
+                if (isOwn) { selectedSquare = idx; renderBoard(); }
             } else {
-                const moveStr = indexToCoord(selectedSquare) + indexToCoord(index);
-                const possibleMoves = gameState.legalMoves.filter(m => m.startsWith(moveStr));
-
-                if (possibleMoves.length > 0) {
-                    if (possibleMoves.length === 1) makeMove(selectedSquare, index);
-                    else {
-                        pendingPromotion = { from: selectedSquare, to: index };
-                        showPromotionDialog();
-                    }
-                } else if (isOwnPiece && piece.toLowerCase() === 'r') {
-                     makeMove(selectedSquare, index); // Castling via click
-                } else if (isOwnPiece) {
-                    selectedSquare = index; 
-                    renderBoard();
+                const moveStr = indexToCoord(selectedSquare) + indexToCoord(idx);
+                const candidates = gameState.legalMoves.filter(m => m.startsWith(moveStr));
+                
+                if (candidates.length === 1) {
+                    makeMove(selectedSquare, idx);
+                } else if (candidates.length > 1) {
+                    pendingPromotion = { from: selectedSquare, to: idx };
+                    showPromotion();
                 } else {
-                    selectedSquare = null; 
-                    renderBoard();
+                    if (isOwn) { selectedSquare = idx; renderBoard(); }
+                    else { selectedSquare = null; renderBoard(); }
                 }
             }
         }
 
-        // --- Modals ---
-        function showPromotionDialog() {
-            const dialog = document.getElementById('promotionDialog');
-            const overlay = document.getElementById('overlay');
-            const pieces = document.getElementById('promotionPieces');
-            
-            pieces.innerHTML = '';
-            const promotionPieces = gameState.turn === 'White' ? ['Q', 'R', 'B', 'N'] : ['q', 'r', 'b', 'n'];
-            const promotionLetters = ['q', 'r', 'b', 'n'];
-
-            promotionPieces.forEach((piece, i) => {
+        // Helpers
+        function showStartScreen() { 
+            document.getElementById('startDialog').classList.add('active'); 
+            document.getElementById('overlay').classList.add('active'); 
+        }
+        function closeModal() { 
+            document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+            document.getElementById('overlay').classList.remove('active'); 
+        }
+        function showPromotion() {
+            const d = document.getElementById('promotionDialog');
+            const p = document.getElementById('promotionPieces');
+            p.innerHTML = '';
+            const opts = playerSide === 'White' ? ['Q','R','B','N'] : ['q','r','b','n'];
+            opts.forEach(char => {
                 const div = document.createElement('div');
                 div.className = 'promotion-piece';
-                div.textContent = pieceUnicode[piece];
+                div.textContent = pieceUnicode[char];
                 div.onclick = () => {
-                    makeMove(pendingPromotion.from, pendingPromotion.to, promotionLetters[i]);
-                    hidePromotionDialog();
+                    makeMove(pendingPromotion.from, pendingPromotion.to, char.toLowerCase());
+                    closeModal();
                 };
-                pieces.appendChild(div);
+                p.appendChild(div);
             });
-
-            dialog.classList.add('active');
-            overlay.classList.add('active');
+            d.classList.add('active');
+            document.getElementById('overlay').classList.add('active');
         }
 
-        function hidePromotionDialog() {
-            document.getElementById('promotionDialog').classList.remove('active');
-            document.getElementById('overlay').classList.remove('active');
-            pendingPromotion = null;
-        }
+        function indexToCoord(i) { return String.fromCharCode(97 + (i % 8)) + (Math.floor(i / 8) + 1); }
 
-        function renderStatus() {
-            const turnText = document.getElementById('turnText');
-            const turnDot = document.getElementById('turnDot');
-            const alerts = document.getElementById('alerts');
-
-            turnText.textContent = gameState.turn + "'s Turn";
-            turnDot.className = 'turn-dot ' + gameState.turn.toLowerCase();
-
-            alerts.innerHTML = '';
-            if (gameState.gameOver) {
-                const alert = document.createElement('div');
-                if (gameState.isStalemate) {
-                    alert.className = 'alert stalemate';
-                    alert.textContent = 'STALEMATE';
-                } else {
-                    alert.className = 'alert checkmate';
-                    alert.textContent = 'CHECKMATE - ' + gameState.winner.toUpperCase() + ' WINS';
-                }
-                alerts.appendChild(alert);
-            } else if (gameState.inCheck) {
-                const alert = document.createElement('div');
-                alert.className = 'alert check';
-                alert.textContent = 'CHECK';
-                alerts.appendChild(alert);
-            }
-        }
-
-        function renderCapturedPieces() {
-            const list = document.getElementById('capturedList');
-            list.innerHTML = '';
-            gameState.capturedPieces.forEach(piece => {
-                const span = document.createElement('span');
-                span.className = 'captured-piece';
-                span.textContent = pieceUnicode[piece.substring(1)];
-                list.appendChild(span);
-            });
-        }
-
-        function indexToCoord(index) {
-            const file = String.fromCharCode(97 + (index % 8));
-            const rank = Math.floor(index / 8) + 1;
-            return file + rank;
-        }
-
-        function coordToIndex(coord) {
-            const file = coord.charCodeAt(0) - 97;
-            const rank = parseInt(coord[1]) - 1;
-            return rank * 8 + file;
-        }
-
-        // Init
         loadSounds();
-        showStartScreen(); // Show selection on load
+        showStartScreen();
     </script>
 </body>
 </html>
