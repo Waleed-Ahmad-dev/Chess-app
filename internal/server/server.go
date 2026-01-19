@@ -4,13 +4,13 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
-
-	"io"
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/sound"
@@ -20,10 +20,18 @@ import (
 //go:embed assets
 var assetsFS embed.FS
 
+// Room represents a multiplayer lobby
+type Room struct {
+	ID      string
+	Game    *game.Game
+	Clients map[*websocket.Conn]game.Color // Map connection to player color
+	Mutex   sync.RWMutex
+	LastAct time.Time
+}
+
 var (
-	sessions     = make(map[string]*game.Game)
-	sessionTimes = make(map[string]time.Time)
-	mu           sync.RWMutex
+	rooms        = make(map[string]*Room)
+	mu           sync.RWMutex // Global mutex for the rooms map
 	soundManager = sound.NewWebSoundManager()
 
 	// WebSocket Upgrader
@@ -32,10 +40,14 @@ var (
 			return true // Allow all origins for simplicity
 		},
 	}
-
-	// Clients map: Maps a WebSocket connection to a Session ID
-	clients = make(map[*websocket.Conn]string)
 )
+
+// API Structures
+
+type CreateRoomResponse struct {
+	RoomID string            `json:"roomId"`
+	State  GameStateResponse `json:"state"`
+}
 
 type GameStateResponse struct {
 	Board          []string `json:"board"`
@@ -47,12 +59,19 @@ type GameStateResponse struct {
 	IsStalemate    bool     `json:"isStalemate"`
 	LastMove       string   `json:"lastMove,omitempty"`
 	CapturedPieces []string `json:"capturedPieces"`
-	SoundType      string   `json:"soundType,omitempty"` // Added for sound feedback
+	SoundType      string   `json:"soundType,omitempty"`
+}
+
+type InitMessage struct {
+	Type   string            `json:"type"` // "init"
+	Color  string            `json:"color"`
+	RoomID string            `json:"roomId"`
+	State  GameStateResponse `json:"state"`
 }
 
 type MoveRequest struct {
-	SessionID string `json:"sessionId"`
-	Move      string `json:"move"`
+	RoomID string `json:"roomId"`
+	Move   string `json:"move"`
 }
 
 type MoveResponse struct {
@@ -73,12 +92,17 @@ type SoundData struct {
 }
 
 func StartServer() {
+	// Seed random for room codes
+	rand.Seed(time.Now().UnixNano())
+
 	// Start cleanup goroutine
-	go cleanupSessions()
+	go cleanupRooms()
 
 	http.HandleFunc("/", serveHome)
 	http.HandleFunc("/ws", handleConnections) // WebSocket Endpoint
-	http.HandleFunc("/api/new-game", handleNewGame)
+
+	// New Room API
+	http.HandleFunc("/api/create-room", handleCreateRoom)
 	http.HandleFunc("/api/game-state", handleGameState)
 	http.HandleFunc("/api/make-move", handleMakeMove)
 	http.HandleFunc("/api/undo-move", handleUndoMove)
@@ -88,9 +112,25 @@ func StartServer() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// handleConnections upgrades HTTP to WebSocket
+// handleConnections upgrades HTTP to WebSocket and manages Room Joining
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	// 1. Upgrade the connection
+	// 1. Get Room ID
+	roomID := r.URL.Query().Get("room")
+	if roomID == "" {
+		http.Error(w, "Room ID required", http.StatusBadRequest)
+		return
+	}
+
+	mu.Lock()
+	room, exists := rooms[roomID]
+	mu.Unlock()
+
+	if !exists {
+		http.Error(w, "Room not found", http.StatusNotFound)
+		return
+	}
+
+	// 2. Upgrade the connection
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket Upgrade Error: %v", err)
@@ -98,50 +138,66 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	// 2. Get Session ID from query params (e.g., /ws?sessionId=xyz)
-	sessionID := r.URL.Query().Get("sessionId")
-	if sessionID == "" {
-		log.Println("WebSocket connection rejected: No Session ID")
-		return
+	// 3. Register client and Assign Color
+	room.Mutex.Lock()
+	clientCount := len(room.Clients)
+	var assignedColor game.Color
+
+	if clientCount == 0 {
+		assignedColor = game.White
+	} else if clientCount == 1 {
+		assignedColor = game.Black
+	} else {
+		// Room full (Spectator mode could be added here, but for now we reject or just don't assign a playing color)
+		// For this implementation, we allow connection but maybe frontend handles it as spectator
+		// defaulting to White for view purposes, or a specific Spectator type
+		assignedColor = game.White // Default fallback
 	}
 
-	// 3. Register client
-	mu.Lock()
-	clients[ws] = sessionID
-	mu.Unlock()
+	room.Clients[ws] = assignedColor
+	room.Mutex.Unlock()
 
-	log.Printf("Client connected to session: %s", sessionID)
+	log.Printf("Client connected to Room: %s as %s", roomID, assignedColor)
 
-	// 4. Keep connection alive / Listen for close
+	// 4. Send Initial Handshake (Assigned Color + Current State)
+	initState := getGameState(room.Game, "")
+	initMsg := InitMessage{
+		Type:   "init",
+		Color:  assignedColor.String(),
+		RoomID: roomID,
+		State:  initState,
+	}
+	ws.WriteJSON(initMsg)
+
+	// 5. Keep connection alive / Listen for close
 	for {
-		// We don't expect messages from client via WS for now (using HTTP for moves),
-		// but we need to read to handle Close messages / Pings.
 		_, _, err := ws.ReadMessage()
 		if err != nil {
-			log.Printf("Client disconnected: %v", err)
-			mu.Lock()
-			delete(clients, ws)
-			mu.Unlock()
+			log.Printf("Client disconnected from Room %s: %v", roomID, err)
+
+			// Remove client from room
+			room.Mutex.Lock()
+			delete(room.Clients, ws)
+			room.Mutex.Unlock()
 			break
 		}
 	}
 }
 
-// broadcastState sends the current game state to all clients in the given session
-func broadcastState(sessionID string, g *game.Game, soundType string) {
-	mu.Lock()
-	defer mu.Unlock()
+// broadcastState sends the current game state to all clients in the specific room
+func broadcastState(room *Room, soundType string) {
+	room.Mutex.RLock()
+	defer room.Mutex.RUnlock()
 
-	state := getGameState(g, soundType)
+	state := getGameState(room.Game, soundType)
 
-	for client, clientSessionID := range clients {
-		if clientSessionID == sessionID {
-			err := client.WriteJSON(state)
-			if err != nil {
-				log.Printf("WebSocket Write Error: %v", err)
-				client.Close()
-				delete(clients, client)
-			}
+	for client := range room.Clients {
+		err := client.WriteJSON(state)
+		if err != nil {
+			log.Printf("WebSocket Write Error: %v", err)
+			client.Close()
+			// We can't safely delete from map while iterating with RLock,
+			// relying on the ReadMessage loop to handle cleanup
 		}
 	}
 }
@@ -154,13 +210,13 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if requesting an MP3 file
+	// Serve specific MP3 files if requested
 	if r.URL.Path == "/move.mp3" || r.URL.Path == "/capture.mp3" ||
 		r.URL.Path == "/castle.mp3" || r.URL.Path == "/check.mp3" ||
 		r.URL.Path == "/checkmate.mp3" || r.URL.Path == "/illegal.mp3" ||
 		r.URL.Path == "/promote.mp3" {
-		// Serve the specific sound file
-		file, err := assets.Open(r.URL.Path[1:]) // Remove leading slash
+
+		file, err := assets.Open(r.URL.Path[1:])
 		if err != nil {
 			http.Error(w, "Sound not found", http.StatusNotFound)
 			return
@@ -175,23 +231,30 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.FS(assets)).ServeHTTP(w, r)
 }
 
-func handleNewGame(w http.ResponseWriter, r *http.Request) {
+// handleCreateRoom generates a 4-letter code and creates a new room
+func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	sessionID := generateSessionID()
+	roomID := generateRoomCode()
 	g := game.NewGame()
 
+	newRoom := &Room{
+		ID:      roomID,
+		Game:    g,
+		Clients: make(map[*websocket.Conn]game.Color),
+		LastAct: time.Now(),
+	}
+
 	mu.Lock()
-	sessions[sessionID] = g
-	sessionTimes[sessionID] = time.Now()
+	rooms[roomID] = newRoom
 	mu.Unlock()
 
-	response := map[string]interface{}{
-		"sessionId": sessionID,
-		"state":     getGameState(g, ""),
+	response := CreateRoomResponse{
+		RoomID: roomID,
+		State:  getGameState(g, ""),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -199,25 +262,24 @@ func handleNewGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGameState(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("sessionId")
-	if sessionID == "" {
-		http.Error(w, "Session ID required", http.StatusBadRequest)
+	roomID := r.URL.Query().Get("roomId")
+	if roomID == "" {
+		http.Error(w, "Room ID required", http.StatusBadRequest)
 		return
 	}
 
 	mu.RLock()
-	g, exists := sessions[sessionID]
+	room, exists := rooms[roomID]
 	mu.RUnlock()
 
 	if !exists {
-		http.Error(w, "Session not found", http.StatusNotFound)
+		http.Error(w, "Room not found", http.StatusNotFound)
 		return
 	}
 
 	soundType := r.URL.Query().Get("soundType")
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(getGameState(g, soundType))
+	json.NewEncoder(w).Encode(getGameState(room.Game, soundType))
 }
 
 func handleMakeMove(w http.ResponseWriter, r *http.Request) {
@@ -233,21 +295,26 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mu.RLock()
-	g, exists := sessions[req.SessionID]
+	room, exists := rooms[req.RoomID]
 	mu.RUnlock()
 
 	if !exists {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(MoveResponse{
 			Success: false,
-			Error:   "Session not found",
+			Error:   "Room not found",
 		})
 		return
 	}
 
+	// Lock the room logic
+	room.Mutex.Lock()
+	g := room.Game
 	legalMoves := g.GenerateLegalMoves()
 	move, err := game.ParseMove(req.Move, legalMoves)
+
 	if err != nil {
+		room.Mutex.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(MoveResponse{
 			Success: false,
@@ -258,9 +325,11 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := g.MakeMove(move)
+	room.LastAct = time.Now()
+	room.Mutex.Unlock()
 
-	// Determine sound type based on move result
-	soundType := ""
+	// Determine sound
+	soundType := "move"
 	if result.WasCheckmate {
 		soundType = "checkmate"
 	} else if result.WasCheck {
@@ -271,17 +340,10 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 		soundType = "promote"
 	} else if result.WasCapture {
 		soundType = "capture"
-	} else {
-		soundType = "move"
 	}
 
-	mu.Lock()
-	sessionTimes[req.SessionID] = time.Now()
-	mu.Unlock()
-
-	// --- Broadcast Update to all clients in this session ---
-	go broadcastState(req.SessionID, g, soundType)
-	// -----------------------------------------------------
+	// Broadcast to clients in this room
+	go broadcastState(room, soundType)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
@@ -297,7 +359,7 @@ func handleUndoMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		SessionID string `json:"sessionId"`
+		RoomID string `json:"roomId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -305,36 +367,32 @@ func handleUndoMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mu.RLock()
-	g, exists := sessions[req.SessionID]
+	room, exists := rooms[req.RoomID]
 	mu.RUnlock()
 
 	if !exists {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(MoveResponse{
 			Success: false,
-			Error:   "Session not found",
+			Error:   "Room not found",
 		})
 		return
 	}
 
-	g.UndoMove()
+	room.Mutex.Lock()
+	room.Game.UndoMove()
+	room.LastAct = time.Now()
+	room.Mutex.Unlock()
 
-	mu.Lock()
-	sessionTimes[req.SessionID] = time.Now()
-	mu.Unlock()
-
-	// --- Broadcast Update to all clients in this session ---
-	go broadcastState(req.SessionID, g, "move")
-	// -----------------------------------------------------
+	go broadcastState(room, "move")
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
 		Success: true,
-		State:   getGameState(g, ""),
+		State:   getGameState(room.Game, ""),
 	})
 }
 
-// New endpoint to get sound URLs
 func handleGetSounds(w http.ResponseWriter, r *http.Request) {
 	sounds := SoundData{
 		Move:      "/move.mp3",
@@ -349,6 +407,8 @@ func handleGetSounds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sounds)
 }
+
+// Helpers
 
 func getGameState(g *game.Game, soundType string) GameStateResponse {
 	board := make([]string, 64)
@@ -402,15 +462,8 @@ func getGameState(g *game.Game, soundType string) GameStateResponse {
 
 func getCapturedPieces(g *game.Game) []string {
 	captured := []string{}
-
-	whitePieces := map[game.PieceType]int{
-		game.Pawn: 8, game.Knight: 2, game.Bishop: 2,
-		game.Rook: 2, game.Queen: 1, game.King: 1,
-	}
-	blackPieces := map[game.PieceType]int{
-		game.Pawn: 8, game.Knight: 2, game.Bishop: 2,
-		game.Rook: 2, game.Queen: 1, game.King: 1,
-	}
+	whitePieces := map[game.PieceType]int{game.Pawn: 8, game.Knight: 2, game.Bishop: 2, game.Rook: 2, game.Queen: 1, game.King: 1}
+	blackPieces := map[game.PieceType]int{game.Pawn: 8, game.Knight: 2, game.Bishop: 2, game.Rook: 2, game.Queen: 1, game.King: 1}
 
 	for i := 0; i < 64; i++ {
 		piece := g.Board[i]
@@ -433,23 +486,27 @@ func getCapturedPieces(g *game.Game) []string {
 			captured = append(captured, "b"+string(game.Piece{Type: pType, Color: game.Black}.String()))
 		}
 	}
-
 	return captured
 }
 
-func generateSessionID() string {
-	return fmt.Sprintf("session_%d_%d", len(sessions)+1, time.Now().UnixNano())
+// generateRoomCode creates a random 4-letter code
+func generateRoomCode() string {
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, 4)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
 
-func cleanupSessions() {
+func cleanupRooms() {
 	for {
 		time.Sleep(1 * time.Hour)
 		mu.Lock()
 		now := time.Now()
-		for id, lastActive := range sessionTimes {
-			if now.Sub(lastActive) > 24*time.Hour {
-				delete(sessions, id)
-				delete(sessionTimes, id)
+		for id, room := range rooms {
+			if now.Sub(room.LastAct) > 24*time.Hour {
+				delete(rooms, id)
 			}
 		}
 		mu.Unlock()
