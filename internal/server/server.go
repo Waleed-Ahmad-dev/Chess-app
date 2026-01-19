@@ -27,6 +27,7 @@ type Room struct {
 	Clients map[*websocket.Conn]game.Color // Map connection to player color
 	Mutex   sync.RWMutex
 	LastAct time.Time
+	Mode    string // "online" or "local"
 }
 
 var (
@@ -47,6 +48,7 @@ var (
 type CreateRoomResponse struct {
 	RoomID string            `json:"roomId"`
 	State  GameStateResponse `json:"state"`
+	Mode   string            `json:"mode"`
 }
 
 type GameStateResponse struct {
@@ -66,6 +68,7 @@ type InitMessage struct {
 	Type   string            `json:"type"` // "init"
 	Color  string            `json:"color"`
 	RoomID string            `json:"roomId"`
+	Mode   string            `json:"mode"`
 	State  GameStateResponse `json:"state"`
 }
 
@@ -143,28 +146,35 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	clientCount := len(room.Clients)
 	var assignedColor game.Color
 
-	if clientCount == 0 {
+	// Color Assignment Logic
+	if room.Mode == "local" {
+		// In local mode, the single connection controls everything,
+		// but we assign White essentially as a placeholder or default view.
 		assignedColor = game.White
-	} else if clientCount == 1 {
-		assignedColor = game.Black
 	} else {
-		// Room full (Spectator mode could be added here, but for now we reject or just don't assign a playing color)
-		// For this implementation, we allow connection but maybe frontend handles it as spectator
-		// defaulting to White for view purposes, or a specific Spectator type
-		assignedColor = game.White // Default fallback
+		// Online Multiplayer Logic
+		if clientCount == 0 {
+			assignedColor = game.White
+		} else if clientCount == 1 {
+			assignedColor = game.Black
+		} else {
+			// Room full - default fallback (could be spectator)
+			assignedColor = game.White
+		}
 	}
 
 	room.Clients[ws] = assignedColor
 	room.Mutex.Unlock()
 
-	log.Printf("Client connected to Room: %s as %s", roomID, assignedColor)
+	log.Printf("Client connected to Room: %s (%s) as %s", roomID, room.Mode, assignedColor)
 
-	// 4. Send Initial Handshake (Assigned Color + Current State)
+	// 4. Send Initial Handshake (Assigned Color + Current State + Mode)
 	initState := getGameState(room.Game, "")
 	initMsg := InitMessage{
 		Type:   "init",
 		Color:  assignedColor.String(),
 		RoomID: roomID,
+		Mode:   room.Mode,
 		State:  initState,
 	}
 	ws.WriteJSON(initMsg)
@@ -238,6 +248,18 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse optional request body for mode
+	var req struct {
+		Mode string `json:"mode"` // "local" or "online"
+	}
+	// Decode JSON, if it fails or is empty, we default to "online" below
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	mode := req.Mode
+	if mode != "local" {
+		mode = "online"
+	}
+
 	roomID := generateRoomCode()
 	g := game.NewGame()
 
@@ -246,6 +268,7 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		Game:    g,
 		Clients: make(map[*websocket.Conn]game.Color),
 		LastAct: time.Now(),
+		Mode:    mode,
 	}
 
 	mu.Lock()
@@ -255,6 +278,7 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	response := CreateRoomResponse{
 		RoomID: roomID,
 		State:  getGameState(g, ""),
+		Mode:   mode,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
