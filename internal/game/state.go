@@ -49,22 +49,22 @@ func (g *Game) MakeMove(m Move) MoveResult {
 
 	if m.MoveType == MoveCastling {
 		switch m.To {
-		case 62:
-			rook := g.Board[63]
-			g.Board[63] = Piece{Type: Empty}
-			g.Board[61] = rook
-		case 58:
-			rook := g.Board[56]
-			g.Board[56] = Piece{Type: Empty}
-			g.Board[59] = rook
-		case 6:
+		case 6: // White Short
 			rook := g.Board[7]
 			g.Board[7] = Piece{Type: Empty}
 			g.Board[5] = rook
-		case 2:
+		case 2: // White Long
 			rook := g.Board[0]
 			g.Board[0] = Piece{Type: Empty}
 			g.Board[3] = rook
+		case 62: // Black Short
+			rook := g.Board[63]
+			g.Board[63] = Piece{Type: Empty}
+			g.Board[61] = rook
+		case 58: // Black Long
+			rook := g.Board[56]
+			g.Board[56] = Piece{Type: Empty}
+			g.Board[59] = rook
 		}
 	}
 
@@ -89,29 +89,31 @@ func (g *Game) MakeMove(m Move) MoveResult {
 	}
 
 	if movingPiece.Type == Rook {
-		if m.From == 63 {
+		// White Rooks
+		if m.From == 7 { // h1
 			g.Castling.WhiteKingSide = false
 		}
-		if m.From == 56 {
+		if m.From == 0 { // a1
 			g.Castling.WhiteQueenSide = false
 		}
-		if m.From == 7 {
+		// Black Rooks
+		if m.From == 63 { // h8
 			g.Castling.BlackKingSide = false
 		}
-		if m.From == 0 {
+		if m.From == 56 { // a8
 			g.Castling.BlackQueenSide = false
 		}
 	}
 
 	if capturedPiece.Type == Rook {
 		switch m.To {
-		case 63:
+		case 7: // h1
 			g.Castling.WhiteKingSide = false
-		case 56:
+		case 0: // a1
 			g.Castling.WhiteQueenSide = false
-		case 7:
+		case 63: // h8
 			g.Castling.BlackKingSide = false
-		case 0:
+		case 56: // a8
 			g.Castling.BlackQueenSide = false
 		}
 	}
@@ -184,9 +186,6 @@ func (g *Game) UndoMove() {
 	g.StateHistory = g.StateHistory[:lastIndex]
 
 	// 5. Sync the Move History
-	// Since the snapshot was taken *before* the move was made,
-	// the move currently at the end of g.History is the one we just undid.
-	// We must remove it to keep the history in sync with the board.
 	if len(g.History) > 0 {
 		g.History = g.History[:len(g.History)-1]
 	}
