@@ -415,6 +415,12 @@
         // --- Audio Logic ---
         let sounds = {};
         let soundEnabled = true;
+        
+        // Browser Autoplay Policy: We must track if user has interacted with page
+        let userInteracted = false;
+        document.addEventListener('click', () => {
+            userInteracted = true;
+        }, { capture: true, once: true });
 
         const pieceUnicode = {
             'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
@@ -428,8 +434,7 @@
             
             for (const sound of soundFiles) {
                 sounds[sound] = new Audio(`/${sound}.mp3`);
-                sounds[sound].load();
-                
+                sounds[sound].preload = 'auto'; // Ensure it's ready
                 sounds[sound].onerror = () => {
                     console.warn(`Could not load sound: ${sound}.mp3`);
                 };
@@ -438,12 +443,23 @@
 
         function playSound(soundType) {
             if (!soundEnabled || !sounds[soundType]) return;
+            if (!userInteracted) {
+                // Silently return if user hasn't interacted (prevents console warnings)
+                return;
+            }
             
             try {
-                sounds[soundType].currentTime = 0;
-                sounds[soundType].play().catch(e => {
-                    console.warn(`Could not play sound ${soundType}:`, e);
-                });
+                // Use cloneNode() to create a fresh audio instance.
+                // This allows overlapping sounds (rapid moves) and prevents
+                // the "play() request was interrupted" error.
+                const audioClone = sounds[soundType].cloneNode();
+                
+                const playPromise = audioClone.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.warn(`Audio playback blocked:`, error);
+                    });
+                }
             } catch (e) {
                 console.warn(`Error playing sound ${soundType}:`, e);
             }
@@ -451,19 +467,22 @@
 
         function toggleSound() {
             soundEnabled = document.getElementById('soundToggle').checked;
-            if (soundEnabled) {
+            if (soundEnabled && userInteracted) {
                 playSound('move'); // Feedback sound
             }
         }
 
-        async function newGame() {
+        // Added 'silent' parameter to prevent error on initial page load
+        async function newGame(silent = false) {
             try {
                 const response = await fetch('/api/new-game', { method: 'POST' });
                 const data = await response.json();
                 sessionId = data.sessionId;
                 gameState = data.state;
                 renderGame();
-                playSound('move'); // Play start sound
+                if (!silent) {
+                    playSound('move'); // Play start sound only if requested
+                }
             } catch (error) { console.error(error); }
         }
 
@@ -504,13 +523,10 @@
                     renderGame();
 
                     // --- Server Sound Correction ---
-                    // If the actual result was Check or Checkmate, play that now.
-                    // (It's okay to overlay checking sound after the move click-clack)
                     const serverSound = data.state.soundType;
                     if (serverSound === 'check' || serverSound === 'checkmate') {
                         playSound(serverSound);
                     } else if (serverSound === 'capture' && predictedSound !== 'capture') {
-                        // Handle en-passant where local capture detection might fail (empty target)
                         playSound('capture'); 
                     }
                 } else {
@@ -608,11 +624,7 @@
                 const moveStr = indexToCoord(selectedSquare) + indexToCoord(index);
                 const possibleMoves = gameState.legalMoves.filter(m => m.startsWith(moveStr));
 
-                // Check for move OR King->Rook castling attempt
-                // (Backend now handles King->Rook, but we must allow sending the request even if not in legalMoves list strictly as text)
-                // However, the cleanest way is just to send it if it's a piece click.
-                
-                // If it's a legal move (standard)
+                // Standard Move
                 if (possibleMoves.length > 0) {
                     if (possibleMoves.length === 1) {
                         makeMove(selectedSquare, index);
@@ -622,14 +634,13 @@
                         showPromotionDialog();
                     }
                 } 
-                // Special Case: Castling by clicking Rook (King Selected -> Click Rook)
-                // We send it to backend, let backend figure it out.
-                // We only do this if the target is our own Rook.
+                // Special Castling (Click King then Rook)
                 else if (isOwnPiece && piece.toLowerCase() === 'r') {
                      makeMove(selectedSquare, index);
                 }
+                // Switch Selection
                 else if (isOwnPiece) {
-                    selectedSquare = index; // Switch selection
+                    selectedSquare = index; 
                     renderBoard();
                 } else {
                     selectedSquare = null; // Deselect
@@ -725,7 +736,7 @@
 
         // Initialize sounds and game
         loadSounds();
-        newGame();
+        newGame(true); // START SILENTLY to avoid browser errors!
     </script>
 </body>
 </html>
