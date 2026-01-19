@@ -14,6 +14,7 @@ import (
 
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/game"
 	"github.com/Waleed-Ahmad-dev/Chess-app/internal/sound"
+	"github.com/gorilla/websocket"
 )
 
 //go:embed assets
@@ -24,6 +25,16 @@ var (
 	sessionTimes = make(map[string]time.Time)
 	mu           sync.RWMutex
 	soundManager = sound.NewWebSoundManager()
+
+	// WebSocket Upgrader
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true // Allow all origins for simplicity
+		},
+	}
+
+	// Clients map: Maps a WebSocket connection to a Session ID
+	clients = make(map[*websocket.Conn]string)
 )
 
 type GameStateResponse struct {
@@ -66,14 +77,73 @@ func StartServer() {
 	go cleanupSessions()
 
 	http.HandleFunc("/", serveHome)
+	http.HandleFunc("/ws", handleConnections) // WebSocket Endpoint
 	http.HandleFunc("/api/new-game", handleNewGame)
 	http.HandleFunc("/api/game-state", handleGameState)
 	http.HandleFunc("/api/make-move", handleMakeMove)
 	http.HandleFunc("/api/undo-move", handleUndoMove)
-	http.HandleFunc("/api/sounds", handleGetSounds) // New endpoint for sounds
+	http.HandleFunc("/api/sounds", handleGetSounds)
 
 	log.Println("Server starting on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+// handleConnections upgrades HTTP to WebSocket
+func handleConnections(w http.ResponseWriter, r *http.Request) {
+	// 1. Upgrade the connection
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket Upgrade Error: %v", err)
+		return
+	}
+	defer ws.Close()
+
+	// 2. Get Session ID from query params (e.g., /ws?sessionId=xyz)
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		log.Println("WebSocket connection rejected: No Session ID")
+		return
+	}
+
+	// 3. Register client
+	mu.Lock()
+	clients[ws] = sessionID
+	mu.Unlock()
+
+	log.Printf("Client connected to session: %s", sessionID)
+
+	// 4. Keep connection alive / Listen for close
+	for {
+		// We don't expect messages from client via WS for now (using HTTP for moves),
+		// but we need to read to handle Close messages / Pings.
+		_, _, err := ws.ReadMessage()
+		if err != nil {
+			log.Printf("Client disconnected: %v", err)
+			mu.Lock()
+			delete(clients, ws)
+			mu.Unlock()
+			break
+		}
+	}
+}
+
+// broadcastState sends the current game state to all clients in the given session
+func broadcastState(sessionID string, g *game.Game, soundType string) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	state := getGameState(g, soundType)
+
+	for client, clientSessionID := range clients {
+		if clientSessionID == sessionID {
+			err := client.WriteJSON(state)
+			if err != nil {
+				log.Printf("WebSocket Write Error: %v", err)
+				client.Close()
+				delete(clients, client)
+			}
+		}
+	}
 }
 
 func serveHome(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +279,10 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 	sessionTimes[req.SessionID] = time.Now()
 	mu.Unlock()
 
+	// --- Broadcast Update to all clients in this session ---
+	go broadcastState(req.SessionID, g, soundType)
+	// -----------------------------------------------------
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
 		Success: true,
@@ -248,6 +322,10 @@ func handleUndoMove(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	sessionTimes[req.SessionID] = time.Now()
 	mu.Unlock()
+
+	// --- Broadcast Update to all clients in this session ---
+	go broadcastState(req.SessionID, g, "move")
+	// -----------------------------------------------------
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
