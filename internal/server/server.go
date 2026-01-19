@@ -62,6 +62,7 @@ type GameStateResponse struct {
 	LastMove       string   `json:"lastMove,omitempty"`
 	CapturedPieces []string `json:"capturedPieces"`
 	SoundType      string   `json:"soundType,omitempty"`
+	PlayerCount    int      `json:"playerCount"` // Added to track connections
 }
 
 type InitMessage struct {
@@ -148,8 +149,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Color Assignment Logic
 	if room.Mode == "local" {
-		// In local mode, the single connection controls everything,
-		// but we assign White essentially as a placeholder or default view.
+		// In local mode, the single connection controls everything
 		assignedColor = game.White
 	} else {
 		// Online Multiplayer Logic
@@ -158,18 +158,18 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		} else if clientCount == 1 {
 			assignedColor = game.Black
 		} else {
-			// Room full - default fallback (could be spectator)
+			// Room full - spectator
 			assignedColor = game.White
 		}
 	}
 
 	room.Clients[ws] = assignedColor
-	room.Mutex.Unlock()
+	room.Mutex.Unlock() // Unlock BEFORE sending messages to avoid potential deadlocks
 
 	log.Printf("Client connected to Room: %s (%s) as %s", roomID, room.Mode, assignedColor)
 
 	// 4. Send Initial Handshake (Assigned Color + Current State + Mode)
-	initState := getGameState(room.Game, "")
+	initState := getGameState(room, "")
 	initMsg := InitMessage{
 		Type:   "init",
 		Color:  assignedColor.String(),
@@ -179,7 +179,11 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.WriteJSON(initMsg)
 
-	// 5. Keep connection alive / Listen for close
+	// 5. Broadcast to EXISTING clients that a new player joined
+	// This ensures the host sees the "Invite" modal close or status update
+	go broadcastState(room, "join")
+
+	// 6. Keep connection alive / Listen for close
 	for {
 		_, _, err := ws.ReadMessage()
 		if err != nil {
@@ -189,6 +193,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			room.Mutex.Lock()
 			delete(room.Clients, ws)
 			room.Mutex.Unlock()
+
+			// Notify remaining players
+			go broadcastState(room, "disconnect")
 			break
 		}
 	}
@@ -199,15 +206,13 @@ func broadcastState(room *Room, soundType string) {
 	room.Mutex.RLock()
 	defer room.Mutex.RUnlock()
 
-	state := getGameState(room.Game, soundType)
+	state := getGameState(room, soundType)
 
 	for client := range room.Clients {
 		err := client.WriteJSON(state)
 		if err != nil {
 			log.Printf("WebSocket Write Error: %v", err)
 			client.Close()
-			// We can't safely delete from map while iterating with RLock,
-			// relying on the ReadMessage loop to handle cleanup
 		}
 	}
 }
@@ -252,7 +257,6 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Mode string `json:"mode"` // "local" or "online"
 	}
-	// Decode JSON, if it fails or is empty, we default to "online" below
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	mode := req.Mode
@@ -277,7 +281,7 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	response := CreateRoomResponse{
 		RoomID: roomID,
-		State:  getGameState(g, ""),
+		State:  getGameState(newRoom, ""),
 		Mode:   mode,
 	}
 
@@ -303,7 +307,7 @@ func handleGameState(w http.ResponseWriter, r *http.Request) {
 
 	soundType := r.URL.Query().Get("soundType")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(getGameState(room.Game, soundType))
+	json.NewEncoder(w).Encode(getGameState(room, soundType))
 }
 
 func handleMakeMove(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +347,7 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(MoveResponse{
 			Success: false,
 			Error:   err.Error(),
-			State:   getGameState(g, "illegal"),
+			State:   getGameState(room, "illegal"),
 		})
 		return
 	}
@@ -372,7 +376,7 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
 		Success: true,
-		State:   getGameState(g, soundType),
+		State:   getGameState(room, soundType),
 	})
 }
 
@@ -413,7 +417,7 @@ func handleUndoMove(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MoveResponse{
 		Success: true,
-		State:   getGameState(room.Game, ""),
+		State:   getGameState(room, ""),
 	})
 }
 
@@ -434,7 +438,9 @@ func handleGetSounds(w http.ResponseWriter, r *http.Request) {
 
 // Helpers
 
-func getGameState(g *game.Game, soundType string) GameStateResponse {
+// getGameState now takes the Room struct to calculate player count
+func getGameState(room *Room, soundType string) GameStateResponse {
+	g := room.Game
 	board := make([]string, 64)
 	for i := 0; i < 64; i++ {
 		board[i] = g.Board[i].String()
@@ -481,6 +487,7 @@ func getGameState(g *game.Game, soundType string) GameStateResponse {
 		LastMove:       lastMove,
 		CapturedPieces: capturedPieces,
 		SoundType:      soundType,
+		PlayerCount:    len(room.Clients),
 	}
 }
 
