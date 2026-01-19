@@ -85,10 +85,10 @@ func checkAlternativeCastling(from, to int, legalMoves []Move) []Move {
 	// Map of King->Rook moves to their actual King->Dest moves
 	// Key: KingFrom * 100 + RookTo, Value: Actual KingTo
 	castlingMap := map[int]int{
-		6063: 62, // White Short (e1->h1 implies e1->g1)
-		6056: 58, // White Long  (e1->a1 implies e1->c1)
-		407:  6,  // Black Short (e8->h8 implies e8->g8)
-		400:  2,  // Black Long  (e8->a8 implies e8->c8)
+		407:  6,  // White Short (e1->h1 implies e1->g1)
+		400:  2,  // White Long  (e1->a1 implies e1->c1)
+		6063: 62, // Black Short (e8->h8 implies e8->g8)
+		6056: 58, // Black Long  (e8->a8 implies e8->c8)
 	}
 
 	key := from*100 + to
