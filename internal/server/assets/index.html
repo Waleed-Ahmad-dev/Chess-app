@@ -106,6 +106,17 @@
             background-color: var(--sq-hover);
         }
 
+        /* --- Drag & Drop Styles --- */
+        .square.dragging {
+            opacity: 0.4;
+            background-color: var(--sq-selected);
+        }
+
+        .square.drag-over {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            box-shadow: inset 0 0 20px rgba(255,255,255,0.5);
+        }
+
         .square.selected {
             background-color: var(--sq-selected) !important;
             box-shadow: inset 0 0 15px rgba(255,255,255,0.1);
@@ -411,6 +422,7 @@
         let gameState = null;
         let selectedSquare = null;
         let pendingPromotion = null;
+        let dragSourceIndex = null; // Store the starting square index for drag operations
         
         // --- Audio Logic ---
         let sounds = {};
@@ -594,7 +606,7 @@
                         if (index === from || index === to) square.classList.add('last-move');
                     }
 
-                    // Legal Moves
+                    // Legal Moves (for click indicators)
                     if (selectedSquare !== null) {
                         const moveStr = indexToCoord(selectedSquare) + indexToCoord(index);
                         if (gameState.legalMoves.some(m => m.startsWith(moveStr))) {
@@ -602,9 +614,119 @@
                         }
                     }
 
+                    // --- Drag and Drop Feature ---
+                    const isOwnPiece = (gameState.turn === 'White' && piece === piece.toUpperCase() && piece !== '.') ||
+                                       (gameState.turn === 'Black' && piece === piece.toLowerCase() && piece !== '.');
+
+                    // Make Draggable
+                    if (isOwnPiece && !gameState.gameOver) {
+                        square.draggable = true;
+                        square.addEventListener('dragstart', (e) => handleDragStart(e, index));
+                        square.addEventListener('dragend', handleDragEnd);
+                    }
+
+                    // Drop Targets
+                    square.addEventListener('dragover', handleDragOver);
+                    square.addEventListener('dragenter', handleDragEnter);
+                    square.addEventListener('dragleave', handleDragLeave);
+                    square.addEventListener('drop', (e) => handleDrop(e, index));
+
+                    // Click Fallback
                     square.onclick = () => handleSquareClick(index);
                     board.appendChild(square);
                 }
+            }
+        }
+
+        // --- Drag and Drop Handlers ---
+        
+        function handleDragStart(e, index) {
+            if (gameState.gameOver) {
+                e.preventDefault();
+                return;
+            }
+            dragSourceIndex = index;
+            e.dataTransfer.effectAllowed = 'move';
+            // Set data to ensure drag works on some specific browser versions
+            e.dataTransfer.setData('text/plain', index);
+
+            // Polish: Add dragging class for opacity reduction
+            // We use setTimeout to ensure the ghost image is created from the full opacity element
+            // before we reduce the opacity of the source element.
+            setTimeout(() => {
+                e.target.classList.add('dragging');
+            }, 0);
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+            dragSourceIndex = null;
+            // Cleanup any stuck drag-over classes
+            document.querySelectorAll('.square').forEach(sq => sq.classList.remove('drag-over'));
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault(); // Essential: allows dropping
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        function handleDragEnter(e) {
+            e.preventDefault();
+            // Optional: Highlight the square being dragged over
+            if (e.target.classList.contains('square')) {
+                e.target.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(e) {
+            if (e.target.classList.contains('square')) {
+                e.target.classList.remove('drag-over');
+            }
+        }
+
+        function handleDrop(e, toIndex) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Cleanup visual styles
+            if (e.target.classList.contains('square')) {
+                e.target.classList.remove('drag-over');
+            }
+
+            const fromIndex = dragSourceIndex;
+            if (fromIndex === null || fromIndex === toIndex) return;
+
+            // Logic matches handleSquareClick regarding Move vs Promotion vs Castling
+            const piece = gameState.board[fromIndex];
+            const targetPiece = gameState.board[toIndex];
+            
+            // Check for King -> Rook castling attempt (User drags King onto their own Rook)
+            // Backend handles the actual e1h1 -> e1g1 logic, we just need to detect it client-side
+            const isKing = piece.toLowerCase() === 'k';
+            const isRook = targetPiece.toLowerCase() === 'r';
+            const sameColor = (piece === piece.toUpperCase()) === (targetPiece === targetPiece.toUpperCase());
+            
+            if (isKing && isRook && sameColor) {
+                // Submit the raw move (King index -> Rook index). Backend's checkAlternativeCastling handles this.
+                makeMove(fromIndex, toIndex);
+                return;
+            }
+
+            // Standard Move Validation
+            const moveStr = indexToCoord(fromIndex) + indexToCoord(toIndex);
+            const possibleMoves = gameState.legalMoves.filter(m => m.startsWith(moveStr));
+
+            if (possibleMoves.length > 0) {
+                if (possibleMoves.length === 1) {
+                    makeMove(fromIndex, toIndex);
+                } else {
+                    // Multiple matches imply Promotion (e.g. e7e8q, e7e8r...)
+                    pendingPromotion = { from: fromIndex, to: toIndex };
+                    showPromotionDialog();
+                }
+            } else {
+                // Invalid move
+                playSound('illegal');
             }
         }
 
