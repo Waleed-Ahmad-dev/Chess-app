@@ -461,6 +461,7 @@
         let selectedSquare = null;
         let pendingPromotion = null;
         let dragSourceIndex = null;
+        let socket = null; // WebSocket variable
         
         // --- Settings ---
         let soundEnabled = true;
@@ -508,6 +509,46 @@
             renderBoard(); // Re-render immediately to reflect change
         }
 
+        // --- WebSocket ---
+        function connectWebSocket(sid) {
+            if (socket) {
+                socket.close();
+            }
+
+            // Determine protocol (ws or wss) based on current page
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws?sessionId=${sid}`;
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log("WebSocket connected");
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log("WebSocket Update Recieved", data);
+                
+                // Update state and render
+                gameState = data;
+                selectedSquare = null;
+                renderGame();
+
+                // Trigger sound based on server directive if sound type provided
+                if (data.soundType) {
+                    playSound(data.soundType);
+                }
+            };
+
+            socket.onclose = () => {
+                console.log("WebSocket disconnected");
+            };
+
+            socket.onerror = (error) => {
+                console.error("WebSocket error:", error);
+            };
+        }
+
         // --- Game Management ---
         function showStartScreen() {
             document.getElementById('startDialog').classList.add('active');
@@ -518,12 +559,6 @@
             playerSide = side;
             document.getElementById('startDialog').classList.remove('active');
             document.getElementById('overlay').classList.remove('active');
-            
-            // If user explicitly chooses Black, let's assume they might want auto-flip to start immediately
-            // or just orient to Black.
-            // But strict Chess rules: White moves first.
-            // If I am "Black", I wait.
-            
             newGame();
         }
 
@@ -534,6 +569,9 @@
                 sessionId = data.sessionId;
                 gameState = data.state;
                 
+                // Initialize WebSocket for this session
+                connectWebSocket(sessionId);
+
                 selectedSquare = null;
                 renderGame();
                 playSound('move');
@@ -542,7 +580,7 @@
 
         async function makeMove(from, to, promotion = '') {
             try {
-                // Optimistic Sound
+                // Optimistic Sound (immediate feedback for user who clicked)
                 let predictedSound = 'move';
                 const pieceAtTarget = gameState.board[to];
                 const movingPiece = gameState.board[from];
@@ -554,6 +592,8 @@
                 else if (isKing && moveDist === 2) predictedSound = 'castle';
                 else if (isCapture) predictedSound = 'capture';
                 
+                // Only play "predicted" sound if we made the move. 
+                // The server will broadcast sound to everyone else.
                 playSound(predictedSound);
 
                 const move = indexToCoord(from) + indexToCoord(to) + promotion;
@@ -565,13 +605,14 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    // Update is also handled via WebSocket, but handling here ensures atomicity for the mover
                     gameState = data.state;
                     selectedSquare = null;
                     renderGame();
 
+                    // Check server sound against predicted sound (e.g., predicted move but was check)
                     const serverSound = data.state.soundType;
                     if (serverSound === 'check' || serverSound === 'checkmate') playSound(serverSound);
-                    else if (serverSound === 'capture' && predictedSound !== 'capture') playSound('capture');
                 } else {
                     playSound('illegal');
                     console.log('Invalid move: ' + data.error);
@@ -609,14 +650,9 @@
             board.innerHTML = '';
 
             // Determine Orientation
-            // If Auto-Flip is ON: Orientation matches the current turn.
-            // If Auto-Flip is OFF: Orientation matches the User's chosen side (default White).
             const orientation = autoFlip ? gameState.turn : playerSide;
             const isFlipped = (orientation === 'Black');
 
-            // White Perspective: Rank 7->0, File 0->7
-            // Black Perspective: Rank 0->7, File 7->0
-            
             const startRank = isFlipped ? 0 : 7;
             const endRank = isFlipped ? 7 : 0;
             const stepRank = isFlipped ? 1 : -1;
@@ -632,18 +668,6 @@
                     
                     const square = document.createElement('div');
                     square.className = 'square';
-                    // Determine color: sum of rank+file is even=dark? No, check standard chess.
-                    // (0,0) is a1 (Dark). 0+0=0 even.
-                    // Actually in chess, a1 is Black (Dark).
-                    // In my logic: (rank + file) % 2 === 0 ? 'light' : 'dark' -> 0+0=0 Light.
-                    // Wait, a1 is usually DARK square in physical boards (White on right).
-                    // Let's stick to simple Alternating logic. 
-                    // To ensure visual consistency regardless of flip, we check rank/file coordinate directly.
-                    // Standard: a1 (0,0) is Dark. h1 (0,7) is Light.
-                    // If (rank + file) is even -> Dark. If odd -> Light. 
-                    // Wait, standard is (rank+file)%2==0 -> Dark? 
-                    // Let's just use what works visually:
-                    // Using (rank + file) % 2 !== 0 ? 'light' : 'dark' usually works for a1=dark.
                     square.className += (rank + file) % 2 !== 0 ? ' light' : ' dark';
                     
                     const piece = gameState.board[index];
@@ -673,7 +697,7 @@
 
                     // Drag & Drop
                     const isOwnPiece = (gameState.turn === 'White' && piece === piece.toUpperCase() && piece !== '.') ||
-                                     (gameState.turn === 'Black' && piece === piece.toLowerCase() && piece !== '.');
+                                       (gameState.turn === 'Black' && piece === piece.toLowerCase() && piece !== '.');
                     
                     if (isOwnPiece && !gameState.gameOver) {
                         square.draggable = true;
