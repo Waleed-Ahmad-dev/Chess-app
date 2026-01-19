@@ -45,7 +45,8 @@ func main() {
 	// --- The Game Loop ---
 	for {
 		clearScreen()
-		gameInstance.Board.Draw()
+		// Draw board from the perspective of the current player
+		gameInstance.Board.Draw(gameInstance.Turn)
 
 		// 1. Generate Legal Moves for the current turn
 		legalMoves := gameInstance.GenerateLegalMoves()
