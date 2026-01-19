@@ -121,6 +121,8 @@
         button:hover { background: rgba(255, 255, 255, 0.1); }
         button.btn-primary { background: rgba(255, 255, 255, 0.9); color: black; border: none; }
         button.btn-primary:hover { background: #ffffff; box-shadow: 0 0 15px rgba(255,255,255,0.3); }
+        button.btn-success { background: rgba(46, 204, 113, 0.2); border-color: rgba(46, 204, 113, 0.4); }
+        button.btn-success:hover { background: rgba(46, 204, 113, 0.3); }
 
         /* Inputs */
         input[type="text"] {
@@ -151,7 +153,6 @@
 
         .menu-options { display: flex; flex-direction: column; gap: 15px; }
         
-        /* New Styles for Invite Code */
         .invite-code-display {
             font-size: 32px; font-family: monospace; letter-spacing: 4px;
             background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px;
@@ -190,6 +191,8 @@
 
             <div class="controls">
                 <button onclick="undoMove()">Undo</button>
+                <button class="btn-success" onclick="playAI()">Play AI</button>
+                <button onclick="exportPGN()">Export PGN</button>
                 <button class="btn-primary" onclick="showStartScreen()">Menu</button>
             </div>
             
@@ -291,10 +294,8 @@
                     selectedSquare = null;
                     renderGame();
                     
-                    // If a second player joined (playerCount is 2), we can close the invite modal automatically
                     if (gameMode === 'online' && data.playerCount === 2) {
                         const inviteDialog = document.getElementById('inviteDialog');
-                        // Only close if it is currently open
                         if (inviteDialog.style.display === 'block' || inviteDialog.classList.contains('active')) {
                             closeModal();
                         }
@@ -322,7 +323,6 @@
                 
                 closeModal(); // Close the main menu
 
-                // NEW: If online, show the Invite Code logic immediately
                 if (gameMode === 'online') {
                     showInviteScreen(roomId);
                 }
@@ -357,6 +357,35 @@
                     playSound('illegal');
                 }
             } catch (e) { console.error(e); }
+        }
+
+        async function playAI() {
+            if (gameState.gameOver) return;
+            // Prevent spamming
+            const btn = document.querySelector('.btn-success');
+            btn.disabled = true;
+            btn.textContent = "Thinking...";
+            
+            try {
+                await fetch('/api/play-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId })
+                });
+            } catch(e) { console.error(e); }
+            
+            btn.disabled = false;
+            btn.textContent = "Play AI";
+        }
+
+        async function exportPGN() {
+            try {
+                const res = await fetch(`/api/export-pgn?roomId=${roomId}`);
+                const data = await res.json();
+                
+                await navigator.clipboard.writeText(data.pgn);
+                alert("PGN Copied to Clipboard!\n\n" + data.pgn);
+            } catch (e) { console.error(e); alert("Failed to copy PGN"); }
         }
 
         async function undoMove() {
@@ -437,10 +466,7 @@
 
         function handleSquareClick(idx) {
             if (gameState.gameOver) return;
-            // Strict turn check for online
             if (gameMode === 'online' && playerSide !== gameState.turn) return;
-            
-            // Strict player count check for online
             if (gameMode === 'online' && gameState.playerCount < 2) return;
 
             const piece = gameState.board[idx];
