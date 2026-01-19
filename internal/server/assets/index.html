@@ -182,7 +182,7 @@
 
             <div class="controls">
                 <button onclick="undoMove()">Undo</button>
-                <button class="btn-primary" onclick="showStartScreen()">Lobby</button>
+                <button class="btn-primary" onclick="showStartScreen()">Menu</button>
             </div>
             
             <div style="margin-top: 10px; font-size: 12px; color: #555; text-align: center;">
@@ -200,9 +200,10 @@
     </div>
 
     <div class="modal" id="startDialog">
-        <h3 style="margin-bottom: 20px; color: white;">Multiplayer Chess</h3>
+        <h3 style="margin-bottom: 20px; color: white;">Chess</h3>
         <div class="menu-options">
-            <button class="btn-primary" onclick="createRoom()">Create New Room</button>
+            <button class="btn-primary" onclick="createRoom('online')">Create Online Room</button>
+            <button onclick="createRoom('local')">Pass & Play</button>
             <div style="border-top: 1px solid #333; margin: 5px 0;"></div>
             <input type="text" id="joinCodeInput" placeholder="ROOM CODE" maxlength="4">
             <button onclick="joinRoom()">Join Room</button>
@@ -215,7 +216,8 @@
         let selectedSquare = null;
         let pendingPromotion = null;
         let socket = null;
-        let playerSide = null; // 'White' or 'Black', assigned by server
+        let playerSide = null; // 'White' or 'Black'
+        let gameMode = 'online'; // 'online' or 'local'
 
         const pieceUnicode = {
             'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
@@ -252,7 +254,15 @@
                     playerSide = data.color;
                     roomId = data.roomId;
                     gameState = data.state;
-                    document.getElementById('roomDisplay').textContent = `Room: ${roomId} | You: ${playerSide}`;
+                    gameMode = data.mode; // 'local' or 'online'
+                    
+                    let display = `Room: ${roomId}`;
+                    if (gameMode === 'local') {
+                        display += ` | Pass & Play`;
+                    } else {
+                        display += ` | You: ${playerSide}`;
+                    }
+                    document.getElementById('roomDisplay').textContent = display;
                     renderGame();
                 } else {
                     // Standard Update
@@ -267,14 +277,20 @@
         }
 
         // --- API Calls ---
-        async function createRoom() {
+        async function createRoom(mode) {
             try {
-                const res = await fetch('/api/create-room', { method: 'POST' });
+                const res = await fetch('/api/create-room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode })
+                });
                 const data = await res.json();
                 roomId = data.roomId;
                 gameState = data.state;
+                gameMode = mode;
+                
                 closeModal();
-                connectWebSocket(roomId); // Connect to assign color (White)
+                connectWebSocket(roomId);
             } catch (e) { console.error(e); }
         }
 
@@ -283,12 +299,15 @@
             if (code.length !== 4) return alert("Enter a 4-letter code");
             roomId = code;
             closeModal();
-            connectWebSocket(code); // Connect to assign color (Black usually)
+            connectWebSocket(code);
         }
 
         async function makeMove(from, to, promotion = '') {
             // Client-side turn check
-            if (gameState.turn !== playerSide) return;
+            // If Local: allow move if game not over.
+            // If Online: allow move only if game not over AND it is my turn.
+            if (gameState.gameOver) return;
+            if (gameMode === 'online' && gameState.turn !== playerSide) return;
 
             const move = indexToCoord(from) + indexToCoord(to) + promotion;
             try {
@@ -299,7 +318,7 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    // Update happens via WebSocket usually, but we can optimistically update
+                    // Optimistic update not strictly needed as WS is fast enough locally
                 } else {
                     playSound('illegal');
                 }
@@ -338,9 +357,19 @@
             const board = document.getElementById('board');
             board.innerHTML = '';
             
-            // Auto-flip based on assigned side
+            // Auto-flip Logic:
+            // Local Mode: Flip if Turn is Black (Hotseat style)
+            // Online Mode: Flip if I am Black
             const autoFlip = document.getElementById('autoFlipToggle').checked;
-            const isFlipped = autoFlip ? (playerSide === 'Black') : false;
+            let isFlipped = false;
+            
+            if (autoFlip) {
+                if (gameMode === 'local') {
+                    isFlipped = (gameState.turn === 'Black');
+                } else {
+                    isFlipped = (playerSide === 'Black');
+                }
+            }
 
             for (let rank = isFlipped ? 0 : 7; isFlipped ? rank < 8 : rank >= 0; isFlipped ? rank++ : rank--) {
                 for (let file = isFlipped ? 7 : 0; isFlipped ? file >= 0 : file < 8; isFlipped ? file-- : file++) {
@@ -358,7 +387,7 @@
 
                     if (selectedSquare === idx) sq.classList.add('selected');
                     
-                    // Legal Moves
+                    // Legal Moves Highlighting
                     if (selectedSquare !== null) {
                         const mStr = indexToCoord(selectedSquare) + indexToCoord(idx);
                         if (gameState.legalMoves.some(m => m.startsWith(mStr))) sq.classList.add('legal-move');
@@ -371,15 +400,26 @@
         }
 
         function handleSquareClick(idx) {
-            // Prevent interaction if not your turn or game over
-            if (gameState.gameOver || playerSide !== gameState.turn) return;
+            if (gameState.gameOver) return;
+            
+            // Interaction Check:
+            // Online: Must be my turn.
+            // Local: Must be valid turn (always true if game not over).
+            if (gameMode === 'online' && playerSide !== gameState.turn) return;
 
             const piece = gameState.board[idx];
-            const isOwn = (playerSide === 'White' && piece === piece.toUpperCase() && piece !== '.') ||
-                          (playerSide === 'Black' && piece === piece.toLowerCase() && piece !== '.');
+            
+            // Determine if the piece clicked belongs to the person whose turn it is
+            // White pieces are Uppercase, Black are Lowercase
+            const isWhitePiece = (piece === piece.toUpperCase() && piece !== '.');
+            const isBlackPiece = (piece === piece.toLowerCase() && piece !== '.');
+            
+            let isOwnPiece = false;
+            if (gameState.turn === 'White' && isWhitePiece) isOwnPiece = true;
+            if (gameState.turn === 'Black' && isBlackPiece) isOwnPiece = true;
 
             if (selectedSquare === null) {
-                if (isOwn) { selectedSquare = idx; renderBoard(); }
+                if (isOwnPiece) { selectedSquare = idx; renderBoard(); }
             } else {
                 const moveStr = indexToCoord(selectedSquare) + indexToCoord(idx);
                 const candidates = gameState.legalMoves.filter(m => m.startsWith(moveStr));
@@ -390,7 +430,7 @@
                     pendingPromotion = { from: selectedSquare, to: idx };
                     showPromotion();
                 } else {
-                    if (isOwn) { selectedSquare = idx; renderBoard(); }
+                    if (isOwnPiece) { selectedSquare = idx; renderBoard(); }
                     else { selectedSquare = null; renderBoard(); }
                 }
             }
@@ -409,7 +449,11 @@
             const d = document.getElementById('promotionDialog');
             const p = document.getElementById('promotionPieces');
             p.innerHTML = '';
-            const opts = playerSide === 'White' ? ['Q','R','B','N'] : ['q','r','b','n'];
+            
+            // Determine promotion color based on current turn
+            const isWhiteTurn = gameState.turn === 'White';
+            const opts = isWhiteTurn ? ['Q','R','B','N'] : ['q','r','b','n'];
+            
             opts.forEach(char => {
                 const div = document.createElement('div');
                 div.className = 'promotion-piece';
