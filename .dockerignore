@@ -1,0 +1,14 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+chess-app
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Docker
+Dockerfile
+.dockerignore
